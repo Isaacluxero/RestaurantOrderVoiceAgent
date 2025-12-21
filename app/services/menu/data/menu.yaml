@@ -1,0 +1,70 @@
+items:
+  - name: cheeseburger
+    description: Classic cheeseburger with lettuce, tomato, and pickles
+    price: 8.99
+    category: burgers
+    options:
+      - no onions
+      - extra cheese
+      - no pickles
+      - no lettuce
+      - double patty
+
+  - name: hamburger
+    description: Classic hamburger without cheese
+    price: 7.99
+    category: burgers
+    options:
+      - no onions
+      - no pickles
+      - no lettuce
+      - double patty
+
+  - name: fries
+    description: Crispy golden french fries
+    price: 3.99
+    category: sides
+    options:
+      - large
+      - small
+      - extra salt
+
+  - name: onion rings
+    description: Crispy battered onion rings
+    price: 4.99
+    category: sides
+    options:
+      - large
+      - small
+
+  - name: coca cola
+    description: Classic cola
+    price: 2.99
+    category: drinks
+    options:
+      - large
+      - medium
+      - small
+
+  - name: sprite
+    description: Lemon-lime soda
+    price: 2.99
+    category: drinks
+    options:
+      - large
+      - medium
+      - small
+
+  - name: water
+    description: Bottled water
+    price: 1.99
+    category: drinks
+    options:
+      - large
+      - small
+
+categories:
+  - burgers
+  - sides
+  - drinks
+
