@@ -90,7 +90,7 @@ function CallCard({ call }: CallCardProps) {
         </div>
       )}
 
-      {call.orders.length === 0 && (
+      {call.orders.length === 0 && !isFailed && (
         <div className="no-orders">
           <p>No orders from this call</p>
         </div>

@@ -1,5 +1,6 @@
 """Menu API endpoints."""
-from fastapi import APIRouter, Depends
+import logging
+from fastapi import APIRouter, Depends, Request, HTTPException
 from app.core.dependencies import get_menu_repository
 from app.services.menu.repository import MenuRepository
 from pydantic import BaseModel
@@ -7,6 +8,7 @@ from typing import List, Optional
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class MenuItemResponse(BaseModel):
