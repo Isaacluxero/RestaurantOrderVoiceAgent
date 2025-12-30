@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
 from app.core.dependencies import get_menu_repository
-from app.core.config import settings
 from app.services.menu.repository import MenuRepository
 from app.services.agent.agent import AgentService
 from app.services.call_session.manager import CallSessionManager
@@ -18,22 +17,9 @@ logger = logging.getLogger(__name__)
 def get_base_url(request: Request) -> str:
     """
     Get the base URL for constructing absolute URLs.
-    
-    Uses BASE_URL environment variable if set, otherwise uses request.base_url.
-    On Railway, request.base_url should work correctly.
+    On Railway, request.base_url works correctly.
     """
-    # Check for BASE_URL env var first (explicit override)
-    import os
-    base_url_env = os.getenv("BASE_URL", "").strip()
-    if base_url_env:
-        logger.info(f"[BASE_URL] Using BASE_URL from environment: {base_url_env}")
-        return base_url_env.rstrip('/')
-    
-    # Use request.base_url (works on Railway)
-    base_url = str(request.base_url).rstrip('/')
-    logger.info(f"[BASE_URL] Using request.base_url: {base_url}")
-    
-    return base_url
+    return str(request.base_url).rstrip('/')
 
 
 def get_session_manager(

@@ -23,7 +23,6 @@ class Settings(BaseSettings):
     # Server
     host: str = "0.0.0.0"
     port: int = 8000
-    base_url: str = ""  # Optional base URL override (e.g., for Railway deployment)
 
     model_config = SettingsConfigDict(
         env_file=".env",
