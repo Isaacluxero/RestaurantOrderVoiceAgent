@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.services.agent.state import ConversationState
 from app.services.agent.prompt import get_system_prompt, get_user_prompt
 from app.services.agent.stages import ConversationStage
+from app.services.agent.flow_manager import ConversationFlowManager
 from app.services.menu.repository import MenuRepository
 
 
@@ -15,6 +16,7 @@ class AgentService:
     def __init__(self, menu_repository: MenuRepository):
         self.client = AsyncOpenAI(api_key=settings.openai_api_key)
         self.menu_repository = menu_repository
+        # Flow manager is created per-call via get_flow_manager() method
 
     async def initialize_state(
         self, call_sid: str, menu_text: str, item_requirements_text: str = ""
@@ -25,9 +27,8 @@ class AgentService:
             menu_context=menu_text,
             stage=ConversationStage.GREETING,
         )
-        # Store item requirements in state for later use
-        if item_requirements_text:
-            state.menu_context += f"\n\n{item_requirements_text}"
+        # Note: item_requirements_text is no longer stored in state.menu_context
+        # It's handled by the flow manager via the menu repository
         return state
 
     async def process_user_input(
@@ -42,39 +43,29 @@ class AgentService:
         # Add user input to transcript
         state.add_transcript_turn("Customer", user_input)
 
-        # Get menu text and requirements if not already loaded
+        # Get menu text if not already loaded
         if not state.menu_context:
             menu_text = await self.menu_repository.get_menu_text()
-            requirements_text = await self.menu_repository.get_item_requirements_text()
             state.menu_context = menu_text
-            if requirements_text:
-                state.menu_context += f"\n\n{requirements_text}"
 
         # Build conversation context
         context = state.get_transcript_text()
         order_summary = state.get_order_summary()
-
-        # Get item requirements text for system prompt
-        requirements_text = await self.menu_repository.get_item_requirements_text()
         menu_text = await self.menu_repository.get_menu_text()
         
-        # Get system and user prompts
-        system_prompt = get_system_prompt(menu_text, requirements_text)
+        # Get system and user prompts (simplified)
+        system_prompt = get_system_prompt(menu_text)
         user_prompt = get_user_prompt(
             context, 
-            user_input, 
-            current_item=state.current_item_being_discussed,
-            item_needs_size=state.current_item_needs_size,
-            current_order_summary=order_summary,
-            current_item_modifiers=state.current_item_modifiers,
-            current_item_quantity=state.current_item_quantity,
-            conversation_stage=state.stage
+            user_input,
+            conversation_stage=state.stage,
+            current_order_summary=order_summary
         )
 
-        # Call LLM
+        # Call LLM to extract item names and general intent
         try:
             response = await self.client.chat.completions.create(
-                model="gpt-4o-mini",  # Using mini for cost efficiency
+                model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
@@ -83,105 +74,68 @@ class AgentService:
                 response_format={"type": "json_object"},
             )
 
-            # Parse response
+            # Parse LLM response
             content = response.choices[0].message.content
-            agent_response = json.loads(content)
-
-            # Check for completion indicators before processing response
+            llm_response = json.loads(content)
+            
             user_input_lower = user_input.lower().strip()
-            completion_indicators = ["none", "no", "no modifiers", "no thanks", "that's it", "that's all", 
-                                   "nothing", "no changes", "that's fine", "sounds good", "yes", "correct"]
             
-            # Update state based on intent and action
-            intent = agent_response.get("intent", "")
-            action = agent_response.get("action", {})
+            # Get or create flow manager for this call session (stored in state)
+            # Flow manager state is stored per-call to avoid conflicts
+            flow_manager = self._get_flow_manager_for_state(state)
             
-            # If we have a current item and user says completion indicators, force add_item action
-            if state.current_item_being_discussed:
-                # Check if user response indicates completion (saying none/no/confirmation)
-                is_completion_response = any(indicator in user_input_lower for indicator in completion_indicators)
-                
-                # Also check if action already says to add item or complete
-                action_type = action.get("type", "")
-                should_add_item = action_type == "add_item" or action_type == "complete_item" or is_completion_response
-                
-                if should_add_item and action_type != "add_item":
-                    # Force add_item action - user is completing the current item
-                    action = {
-                        "type": "add_item",
-                        "item_name": state.current_item_being_discussed,
-                        "quantity": state.current_item_quantity,
-                        "modifiers": state.current_item_modifiers.copy(),
-                    }
-                    intent = "adding_item"
-                    agent_response["intent"] = intent
-                    agent_response["action"] = action
-                    # Update response text if needed
-                    if not agent_response.get("response") or "anything else" not in agent_response.get("response", "").lower():
-                        agent_response["response"] = "Got it! Would you like anything else?"
+            # Check if we're currently customizing an item
+            current_item_name = flow_manager.get_current_item_name()
             
-            # Track current item being discussed
-            current_item_tracking = action.get("current_item_tracking")
-            if current_item_tracking:
-                state.set_current_item(current_item_tracking, action.get("quantity", 1))
-                # Check if this item needs size
-                item_req = await self.menu_repository.get_item_requirements(current_item_tracking)
-                if item_req and item_req.get("size_required"):
-                    state.current_item_needs_size = True
-                else:
-                    state.current_item_needs_size = False
-            elif action.get("type") == "start_item_discussion" and action.get("item_name"):
-                state.set_current_item(action.get("item_name"), action.get("quantity", 1))
-                # Check if this item needs size
-                item_req = await self.menu_repository.get_item_requirements(action.get("item_name"))
-                if item_req and item_req.get("size_required"):
-                    state.current_item_needs_size = True
-                else:
-                    state.current_item_needs_size = False
-            elif action.get("type") == "complete_item":
-                state.current_item_is_complete = True
-                state.current_item_needs_size = False
-            elif action.get("type") == "add_item":
-                # Item added to order, clear current item tracking
-                state.clear_current_item_discussion()
+            if current_item_name:
+                # We're in the middle of customizing an item - process modifier response
+                flow_response = await flow_manager.process_modifier_response(user_input)
+                agent_response = flow_response
+                # Update state
+                state.current_item_being_discussed = flow_manager.get_current_item_name()
             else:
-                # Update modifiers if they're being discussed
-                if state.current_item_being_discussed and action.get("modifiers"):
-                    modifiers = action.get("modifiers", [])
-                    if isinstance(modifiers, list):
-                        for mod in modifiers:
-                            state.add_modifier_to_current_item(mod)
-                    elif isinstance(modifiers, str):
-                        state.add_modifier_to_current_item(modifiers)
+                # Check if LLM extracted an item name
+                extracted_item_name = llm_response.get("action", {}).get("item_name")
+                
+                if extracted_item_name:
+                    # Customer mentioned an item - start customizing it
+                    flow_response = await flow_manager.process_item_mention(extracted_item_name)
+                    agent_response = flow_response
+                    # Update state
+                    state.current_item_being_discussed = flow_manager.get_current_item_name()
+                else:
+                    # No item mentioned, use LLM response as-is
+                    agent_response = llm_response
+                    # Check for done ordering indicators
+                    done_ordering_indicators = ["that's all", "that's it", "nothing else", "i'm done", "i'm finished", 
+                                              "that's everything", "no that's all", "no thanks that's all"]
+                    is_done_ordering = any(indicator in user_input_lower for indicator in done_ordering_indicators)
+                    
+                    if is_done_ordering and state.stage == ConversationStage.ORDERING:
+                        # Move to review
+                        state.stage = ConversationStage.REVIEW
+                        agent_response["response"] = "Great! Let me read back your order to make sure I have everything correct."
+                        agent_response["intent"] = "reviewing"
+            
+            # Handle add_item action from flow manager
+            if agent_response.get("action", {}).get("type") == "add_item":
+                # Flow manager handled the item customization, item is ready to add
+                state.current_item_being_discussed = None
+                flow_manager.clear_current_item()
             
             # Add agent response to transcript
             state.add_transcript_turn("Agent", agent_response.get("response", ""))
             
-            # Update stage based on intent and order state
-            # Stage transitions:
-            # GREETING -> ORDERING: After greeting (first interaction after greeting)
-            # ORDERING -> REVIEW: When customer indicates done ordering
-            # REVIEW -> CONCLUSION: After order is confirmed
-            
-            user_input_lower = user_input.lower().strip()
-            done_ordering_indicators = ["that's all", "that's it", "nothing else", "i'm done", "i'm finished", 
-                                      "that's everything", "no that's all", "no thanks that's all"]
-            is_done_ordering = any(indicator in user_input_lower for indicator in done_ordering_indicators)
-            
+            # Update stage based on intent
+            intent = agent_response.get("intent", "")
             if state.stage == ConversationStage.GREETING:
-                # Move to ordering after greeting
                 state.stage = ConversationStage.ORDERING
             elif state.stage == ConversationStage.ORDERING:
-                # Move to review if customer indicates they're done ordering
-                if is_done_ordering or intent == "confirming_order":
+                if intent == "reviewing" or "that's all" in user_input_lower or "that's it" in user_input_lower:
                     state.stage = ConversationStage.REVIEW
             elif state.stage == ConversationStage.REVIEW:
-                # Move to conclusion after order is confirmed
-                if intent == "completing" or "yes" in user_input_lower or "correct" in user_input_lower or "that's right" in user_input_lower:
+                if intent == "concluding" or "yes" in user_input_lower or "correct" in user_input_lower:
                     state.stage = ConversationStage.CONCLUSION
-                # If they want to add more, go back to ordering
-                elif "add" in user_input_lower or "more" in user_input_lower or intent == "adding_item":
-                    state.stage = ConversationStage.ORDERING
             
             return agent_response
 
@@ -198,18 +152,31 @@ class AgentService:
                 "intent": "asking_question",
                 "action": {"type": "none"},
             }
+    
+    def _get_flow_manager_for_state(self, state: ConversationState) -> ConversationFlowManager:
+        """Get or create a flow manager for this conversation state.
+        
+        Uses state.call_sid as key to store flow managers per-call.
+        This ensures each call has its own flow manager state.
+        """
+        # Store flow managers in a dict keyed by call_sid
+        # This is thread-safe for our use case (each call gets its own state object)
+        if not hasattr(self, '_flow_managers'):
+            self._flow_managers = {}
+        
+        if state.call_sid not in self._flow_managers:
+            self._flow_managers[state.call_sid] = ConversationFlowManager(self.menu_repository)
+        
+        return self._flow_managers[state.call_sid]
 
     async def get_greeting(self, state: ConversationState) -> str:
         """Get initial greeting message."""
         menu_text = await self.menu_repository.get_menu_text()
-        requirements_text = await self.menu_repository.get_item_requirements_text()
         
         if not state.menu_context:
             state.menu_context = menu_text
-            if requirements_text:
-                state.menu_context += f"\n\n{requirements_text}"
 
-        system_prompt = get_system_prompt(menu_text, requirements_text)
+        system_prompt = get_system_prompt(menu_text)
         user_prompt = """The customer just called. Give them a warm, friendly, and enthusiastic greeting. 
 Be personable and welcoming. Ask how you can help them today with a warm tone. 
 Make them feel valued and welcomed to the restaurant. Keep it brief (1-2 sentences) but friendly."""
@@ -230,7 +197,7 @@ Make them feel valued and welcomed to the restaurant. Keep it brief (1-2 sentenc
             greeting = agent_response.get("response", f"Hello! Welcome to {settings.restaurant_name}. How can I help you today?")
 
             state.add_transcript_turn("Agent", greeting)
-            state.stage = ConversationStage.ORDERING  # Move to ordering after greeting
+            # Stage will transition to ORDERING after first user input
 
             return greeting
         except Exception:

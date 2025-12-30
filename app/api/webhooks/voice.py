@@ -6,12 +6,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
 from app.core.dependencies import get_menu_repository
+from app.core.config import settings
 from app.services.menu.repository import MenuRepository
 from app.services.agent.agent import AgentService
 from app.services.call_session.manager import CallSessionManager
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def get_base_url(request: Request) -> str:
+    """
+    Get the base URL for constructing absolute URLs.
+    
+    Uses BASE_URL environment variable if set (e.g., for Railway),
+    otherwise constructs from request.
+    """
+    if settings.base_url:
+        # Use configured base URL (e.g., from Railway environment variable)
+        return settings.base_url.rstrip('/')
+    
+    # Fall back to request.base_url (works on Railway)
+    return str(request.base_url).rstrip('/')
 
 
 def get_session_manager(
@@ -49,7 +65,9 @@ async def handle_incoming_call(
         from app.services.speech.tts import TextToSpeechService
 
         tts_service = TextToSpeechService()
-        gather_url = f"/webhooks/voice/gather?CallSid={CallSid}"
+        # Construct absolute URL from request (handles proxy headers like ngrok)
+        base_url = get_base_url(request)
+        gather_url = f"{base_url}/webhooks/voice/gather?CallSid={CallSid}"
         logger.debug(f"[INCOMING CALL] Generating TwiML with gather URL: {gather_url} - CallSid: {CallSid}")
         twiml = tts_service.generate_twiml_with_gather(greeting, gather_url)
         
@@ -95,8 +113,10 @@ async def handle_gather(
     
     try:
         # Process the speech and generate response
+        # Construct absolute URL from request (handles proxy headers like ngrok)
+        base_url = get_base_url(request)
         logger.debug(f"[GATHER] Processing speech for CallSid: {CallSid}")
-        twiml = await session_manager.process_user_speech(CallSid, SpeechResult)
+        twiml = await session_manager.process_user_speech(CallSid, SpeechResult, base_url=base_url)
         
         logger.info(
             f"[GATHER] Successfully processed speech input - CallSid: {CallSid}, "
@@ -115,8 +135,10 @@ async def handle_gather(
         error_message = "I'm sorry, I encountered an error. Please try again."
         from app.services.speech.tts import TextToSpeechService
         tts_service = TextToSpeechService()
+        # Construct absolute URL from request (handles proxy headers like ngrok)
+        base_url = get_base_url(request)
         error_twiml = tts_service.generate_twiml_with_gather(
-            error_message, f"/webhooks/voice/gather?CallSid={CallSid}"
+            error_message, f"{base_url}/webhooks/voice/gather?CallSid={CallSid}"
         )
         return Response(content=error_twiml, media_type="application/xml")
 

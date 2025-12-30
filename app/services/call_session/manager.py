@@ -76,7 +76,7 @@ class CallSessionManager:
         return greeting
 
     async def process_user_speech(
-        self, call_sid: str, speech_result: Optional[str] = None
+        self, call_sid: str, speech_result: Optional[str] = None, base_url: str = ""
     ) -> str:
         """
         Process user speech and generate response.
@@ -96,8 +96,9 @@ class CallSessionManager:
         if not speech_result:
             # This shouldn't happen in normal flow, but handle gracefully
             response_text = "I didn't catch that. Could you repeat?"
+            gather_url = f"{base_url}/webhooks/voice/gather?CallSid={call_sid}" if base_url else f"/webhooks/voice/gather?CallSid={call_sid}"
             return self.tts_service.generate_twiml_with_gather(
-                response_text, f"/webhooks/voice/gather?CallSid={call_sid}"
+                response_text, gather_url
             )
 
         # Process user input through agent
@@ -156,9 +157,10 @@ class CallSessionManager:
 </Response>"""
         else:
             # Continue conversation
+            gather_url = f"{base_url}/webhooks/voice/gather?CallSid={call_sid}" if base_url else f"/webhooks/voice/gather?CallSid={call_sid}"
             return self.tts_service.generate_twiml_with_gather(
                 response_text,
-                f"/webhooks/voice/gather?CallSid={call_sid}",
+                gather_url,
             )
 
     async def _persist_order(self, session: CallSession) -> None:
