@@ -79,7 +79,7 @@ async def handle_incoming_call(
         raise HTTPException(status_code=500, detail=f"Error processing incoming call: {str(e)}")
 
 
-@router.post("/voice/gather")
+@router.api_route("/voice/gather", methods=["GET", "POST"])
 async def handle_gather(
     request: Request,
     CallSid: str = Query(...),
@@ -88,11 +88,17 @@ async def handle_gather(
 ):
     """
     Handle gathered speech from Twilio.
-
-    This endpoint is called after Twilio collects user speech.
+    
+    Twilio may send GET or POST requests, with SpeechResult in query params or form data.
+    This endpoint handles both cases.
     """
+    # Extract SpeechResult from query params if not in form data (for GET requests)
+    if not SpeechResult and request.method == "GET":
+        SpeechResult = request.query_params.get("SpeechResult")
+    
     logger.info(
         f"[GATHER] Received speech input - CallSid: {CallSid}, "
+        f"Method: {request.method}, "
         f"SpeechResult length: {len(SpeechResult) if SpeechResult else 0}, "
         f"Client: {request.client.host if request.client else 'unknown'}"
     )
