@@ -31,12 +31,27 @@ function CallCard({ call }: CallCardProps) {
     }
   }
 
+  const getStatusLabel = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'completed':
+        return 'COMPLETED'
+      case 'in_progress':
+        return 'IN PROGRESS'
+      case 'failed':
+        return 'FAILED'
+      default:
+        return status.replace('_', ' ').toUpperCase()
+    }
+  }
+
+  const isFailed = call.status.toLowerCase() === 'failed'
+
   const duration = call.ended_at
     ? Math.round((new Date(call.ended_at).getTime() - new Date(call.started_at).getTime()) / 1000)
     : null
 
   return (
-    <div className="call-card">
+    <div className={`call-card ${isFailed ? 'call-failed' : ''}`}>
       <div className="call-header">
         <div className="call-info">
           <h2>Call {call.id}</h2>
@@ -47,9 +62,15 @@ function CallCard({ call }: CallCardProps) {
           </p>
         </div>
         <span className={getStatusBadgeClass(call.status)}>
-          {call.status.replace('_', ' ').toUpperCase()}
+          {getStatusLabel(call.status)}
         </span>
       </div>
+
+      {isFailed && (
+        <div className="call-failed-message">
+          <p>⚠️ This call ended in a failed state. No orders were placed.</p>
+        </div>
+      )}
       
       {call.transcript && (
         <div className="transcript">

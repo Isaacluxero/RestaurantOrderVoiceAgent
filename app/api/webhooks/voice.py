@@ -1,5 +1,6 @@
 """Twilio voice webhook endpoints."""
-from fastapi import APIRouter, Request, Form, Depends, Query
+import logging
+from fastapi import APIRouter, Request, Form, Depends, Query, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +11,7 @@ from app.services.agent.agent import AgentService
 from app.services.call_session.manager import CallSessionManager
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def get_session_manager(
@@ -32,18 +34,38 @@ async def handle_incoming_call(
 
     This endpoint is called when a call comes in.
     """
-    # Create session and get greeting
-    greeting = await session_manager.get_greeting(CallSid)
-
-    # Generate TwiML with Gather to collect user speech
-    from app.services.speech.tts import TextToSpeechService
-
-    tts_service = TextToSpeechService()
-    twiml = tts_service.generate_twiml_with_gather(
-        greeting, f"/webhooks/voice/gather?CallSid={CallSid}"
+    logger.info(
+        f"[INCOMING CALL] Received incoming call webhook - CallSid: {CallSid}, "
+        f"Client: {request.client.host if request.client else 'unknown'}"
     )
+    
+    try:
+        # Create session and get greeting
+        logger.debug(f"[INCOMING CALL] Creating session for CallSid: {CallSid}")
+        greeting = await session_manager.get_greeting(CallSid)
+        logger.info(f"[INCOMING CALL] Session created, greeting generated (length: {len(greeting)}) - CallSid: {CallSid}")
 
-    return Response(content=twiml, media_type="application/xml")
+        # Generate TwiML with Gather to collect user speech
+        from app.services.speech.tts import TextToSpeechService
+
+        tts_service = TextToSpeechService()
+        gather_url = f"/webhooks/voice/gather?CallSid={CallSid}"
+        logger.debug(f"[INCOMING CALL] Generating TwiML with gather URL: {gather_url} - CallSid: {CallSid}")
+        twiml = tts_service.generate_twiml_with_gather(greeting, gather_url)
+        
+        logger.info(
+            f"[INCOMING CALL] Successfully processed incoming call - CallSid: {CallSid}, "
+            f"TwiML length: {len(twiml)} bytes"
+        )
+        return Response(content=twiml, media_type="application/xml")
+    
+    except Exception as e:
+        logger.error(
+            f"[INCOMING CALL] Error processing incoming call - CallSid: {CallSid}, "
+            f"Error: {type(e).__name__}: {str(e)}",
+            exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=f"Error processing incoming call: {str(e)}")
 
 
 @router.post("/voice/gather")
@@ -58,10 +80,45 @@ async def handle_gather(
 
     This endpoint is called after Twilio collects user speech.
     """
-    # Process the speech and generate response
-    twiml = await session_manager.process_user_speech(CallSid, SpeechResult)
-
-    return Response(content=twiml, media_type="application/xml")
+    logger.info(
+        f"[GATHER] Received speech input - CallSid: {CallSid}, "
+        f"SpeechResult length: {len(SpeechResult) if SpeechResult else 0}, "
+        f"Client: {request.client.host if request.client else 'unknown'}"
+    )
+    
+    if SpeechResult:
+        logger.debug(
+            f"[GATHER] Speech text: '{SpeechResult[:200]}{'...' if len(SpeechResult) > 200 else ''}' - CallSid: {CallSid}"
+        )
+    else:
+        logger.warning(f"[GATHER] No speech result provided (empty or None) - CallSid: {CallSid}")
+    
+    try:
+        # Process the speech and generate response
+        logger.debug(f"[GATHER] Processing speech for CallSid: {CallSid}")
+        twiml = await session_manager.process_user_speech(CallSid, SpeechResult)
+        
+        logger.info(
+            f"[GATHER] Successfully processed speech input - CallSid: {CallSid}, "
+            f"TwiML length: {len(twiml)} bytes"
+        )
+        return Response(content=twiml, media_type="application/xml")
+    
+    except Exception as e:
+        logger.error(
+            f"[GATHER] Error processing speech input - CallSid: {CallSid}, "
+            f"SpeechResult: '{SpeechResult[:100] if SpeechResult else 'None'}', "
+            f"Error: {type(e).__name__}: {str(e)}",
+            exc_info=True
+        )
+        # Return a graceful error response to Twilio
+        error_message = "I'm sorry, I encountered an error. Please try again."
+        from app.services.speech.tts import TextToSpeechService
+        tts_service = TextToSpeechService()
+        error_twiml = tts_service.generate_twiml_with_gather(
+            error_message, f"/webhooks/voice/gather?CallSid={CallSid}"
+        )
+        return Response(content=error_twiml, media_type="application/xml")
 
 
 @router.post("/voice/status")
@@ -76,9 +133,38 @@ async def handle_call_status(
 
     This endpoint is called when call status changes (completed, failed, etc.).
     """
-    if CallStatus in ["completed", "failed", "busy", "no-answer"]:
-        # End session
-        await session_manager.end_session(CallSid)
+    logger.info(
+        f"[CALL STATUS] Received status update - CallSid: {CallSid}, "
+        f"CallStatus: {CallStatus}, "
+        f"Client: {request.client.host if request.client else 'unknown'}"
+    )
+    
+    try:
+        if CallStatus in ["completed", "failed", "busy", "no-answer"]:
+            logger.info(
+                f"[CALL STATUS] Ending session for call - CallSid: {CallSid}, "
+                f"Reason: {CallStatus}"
+            )
+            # End session with the actual status
+            await session_manager.end_session(CallSid, status=CallStatus)
+            logger.info(
+                f"[CALL STATUS] Session ended successfully - CallSid: {CallSid}, "
+                f"Final status: {CallStatus}"
+            )
+        else:
+            logger.debug(
+                f"[CALL STATUS] Status update received but no action needed - "
+                f"CallSid: {CallSid}, CallStatus: {CallStatus}"
+            )
 
-    return Response(content="OK", media_type="text/plain")
+        return Response(content="OK", media_type="text/plain")
+    
+    except Exception as e:
+        logger.error(
+            f"[CALL STATUS] Error handling call status update - CallSid: {CallSid}, "
+            f"CallStatus: {CallStatus}, Error: {type(e).__name__}: {str(e)}",
+            exc_info=True
+        )
+        # Still return OK to Twilio to avoid retries
+        return Response(content="OK", media_type="text/plain")
 

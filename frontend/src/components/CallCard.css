@@ -4,11 +4,17 @@
   padding: 1.5rem;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   transition: transform 0.2s, box-shadow 0.2s;
+  border-left: 4px solid transparent;
 }
 
 .call-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+.call-card.call-failed {
+  border-left-color: #ef4444;
+  background: #fef2f2;
 }
 
 .call-header {
@@ -113,6 +119,22 @@
   background: #f9fafb;
   border-radius: 8px;
   margin-top: 1rem;
+}
+
+.call-failed-message {
+  padding: 1rem;
+  margin: 1rem 0;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  border-left: 4px solid #ef4444;
+}
+
+.call-failed-message p {
+  margin: 0;
+  color: #991b1b;
+  font-weight: 500;
+  font-size: 0.95rem;
 }
 
 @media (max-width: 768px) {

@@ -186,22 +186,46 @@ class CallSessionManager:
         # Confirm order
         await self.order_persistence.confirm_order(order.id)
 
-    async def end_session(self, call_sid: str) -> None:
-        """End a call session and clean up."""
+    async def end_session(self, call_sid: str, status: str = "completed") -> None:
+        """End a call session and clean up.
+        
+        Args:
+            call_sid: Twilio call SID
+            status: Call status - "completed", "failed", "busy", or "no-answer"
+        """
+        from datetime import datetime
+        
         session = await self.get_session(call_sid)
         if session:
             # Update call status
+            # Map Twilio statuses to our statuses
+            if status in ["failed", "busy", "no-answer"]:
+                db_status = "failed"
+            else:
+                db_status = "completed"
+            
             await self.call_persistence.update_call_status(
-                call_sid, "completed"
+                call_sid, db_status, ended_at=datetime.utcnow()
             )
 
-            # Update transcript
-            transcript = session.state.get_transcript_text()
-            await self.call_persistence.update_call_transcript(
-                call_sid, transcript
-            )
+            # Update transcript if available
+            if session.state:
+                transcript = session.state.get_transcript_text()
+                if transcript:
+                    await self.call_persistence.update_call_transcript(
+                        call_sid, transcript
+                    )
 
             # Remove from memory
             if call_sid in self.sessions:
                 del self.sessions[call_sid]
+        else:
+            # Session doesn't exist in memory, but we should still update the DB status
+            if status in ["failed", "busy", "no-answer"]:
+                db_status = "failed"
+            else:
+                db_status = "completed"
+            await self.call_persistence.update_call_status(
+                call_sid, db_status, ended_at=datetime.utcnow()
+            )
 
