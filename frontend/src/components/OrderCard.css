@@ -1,0 +1,111 @@
+.order-card {
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 1rem;
+  border-left: 4px solid #667eea;
+}
+
+.order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.order-info h4 {
+  font-size: 1.1rem;
+  color: #333;
+  margin-bottom: 0.25rem;
+  font-weight: 600;
+}
+
+.order-time {
+  font-size: 0.85rem;
+  color: #888;
+}
+
+.order-status-badge {
+  padding: 0.35rem 0.75rem;
+  border-radius: 16px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-confirmed {
+  background: #10b981;
+  color: white;
+}
+
+.status-pending {
+  background: #f59e0b;
+  color: white;
+}
+
+.status-cancelled {
+  background: #ef4444;
+  color: white;
+}
+
+.order-items {
+  margin-top: 0.75rem;
+}
+
+.order-items h5 {
+  font-size: 0.9rem;
+  color: #555;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.order-items ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.order-item {
+  padding: 0.5rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.item-quantity {
+  font-weight: 700;
+  color: #667eea;
+  min-width: 2rem;
+}
+
+.item-name {
+  font-weight: 500;
+  flex: 1;
+}
+
+.item-modifiers {
+  color: #666;
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.order-raw-text {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.order-raw-text p {
+  font-size: 0.9rem;
+  color: #555;
+  line-height: 1.5;
+}
+
+.order-raw-text strong {
+  color: #333;
+}
+
