@@ -1,6 +1,7 @@
 """Agent prompt templates."""
 from typing import Optional, List
 from app.core.config import settings
+from app.services.agent.stages import ConversationStage
 
 
 def get_system_prompt(menu_text: str, item_requirements_text: str = "") -> str:
@@ -11,14 +12,23 @@ def get_system_prompt(menu_text: str, item_requirements_text: str = "") -> str:
 Your job is to take phone orders from customers.
 
 Your responsibilities:
-1. Greet the caller warmly
-2. Take their order by asking what they'd like
-3. Ask clarifying questions about sizes, modifiers, and quantities
-4. Track which item the customer is currently discussing
-5. Confirm the complete order before finalizing
-6. Be concise in your responses (this is a phone call)
-7. Only suggest items from the menu
-8. If a customer asks for something not on the menu, politely let them know and suggest alternatives
+1. Greet the caller warmly (GREETING stage)
+2. Take their order by asking what they'd like (ORDERING stage)
+3. Ask clarifying questions about sizes, modifiers, and quantities (ORDERING stage)
+4. Track which item the customer is currently discussing (ORDERING stage)
+5. Review the complete order before finalizing (REVIEW stage)
+6. Confirm everything is correct (REVIEW stage)
+7. Thank the customer and conclude (CONCLUSION stage)
+8. Be concise in your responses (this is a phone call)
+9. If a customer asks for something not on the menu, politely let them know and suggest alternatives
+
+CONVERSATION STAGES:
+- GREETING: Initial welcome when call starts
+- ORDERING: Actively taking orders, asking about items and modifiers
+- REVIEW: Reviewing the complete order with the customer for confirmation
+- CONCLUSION: Finalizing the order and saying goodbye
+
+You will be told which stage you're currently in. Stay in the appropriate stage and follow stage-specific behaviors.
 
 Menu:
 {menu_text}
@@ -91,10 +101,32 @@ Important: Always output valid JSON. The "response" field is what you'll say to 
 
 def get_user_prompt(state_text: str, user_input: str, current_item: Optional[str] = None, 
                    item_needs_size: bool = False, current_order_summary: str = "",
-                   current_item_modifiers: List[str] = None, current_item_quantity: int = 1) -> str:
+                   current_item_modifiers: List[str] = None, current_item_quantity: int = 1,
+                   conversation_stage: ConversationStage = ConversationStage.GREETING) -> str:
     """Generate user prompt with conversation context."""
     if current_item_modifiers is None:
         current_item_modifiers = []
+    
+    # Stage descriptions
+    stage_descriptions = {
+        ConversationStage.GREETING: "You are greeting the customer and welcoming them. After greeting, move to ORDERING stage.",
+        ConversationStage.ORDERING: "You are actively taking orders. Ask what items they'd like, gather modifiers, and add items to the order. When customer seems done ordering, move to REVIEW stage.",
+        ConversationStage.REVIEW: "You are reviewing the complete order with the customer. Read back all items and confirm everything is correct. Once confirmed, move to CONCLUSION stage.",
+        ConversationStage.CONCLUSION: "You are finalizing the order and saying goodbye. Thank the customer warmly and end the call."
+    }
+    
+    stage_context = f"""
+CONVERSATION STAGE: {conversation_stage.value.upper()}
+{stage_descriptions.get(conversation_stage, '')}
+
+IMPORTANT STAGE RULES:
+- Do NOT go back to GREETING stage once you've moved to ORDERING - NEVER greet again after you've started taking orders
+- Stay in ORDERING stage while taking orders - this is where you ask about items, modifiers, sizes
+- Only move to REVIEW stage when customer indicates they're done ordering (says "that's all", "nothing else", "I'm done", etc.)
+- In REVIEW stage, read back the entire order and ask for confirmation - do NOT take new orders here
+- Only move to CONCLUSION after order is confirmed in REVIEW stage
+- In each stage, behave appropriately - don't take orders in REVIEW, don't review in ORDERING, etc.
+"""
     
     current_item_context = ""
     if current_item:
@@ -114,17 +146,25 @@ CURRENT ITEM BEING DISCUSSED: {current_item}
     
     return f"""Conversation so far:
 {state_text}
+{stage_context}
 {current_item_context}
 {order_context}
 
 Customer just said: "{user_input}"
 
 CRITICAL DECISION LOGIC:
-1. If current_item_being_discussed is set AND customer says "none"/"no"/"that's it"/"nothing"/confirms → action.type MUST be "add_item" with the current item details
-2. If customer mentions a new item → set as new current_item_being_discussed using action.current_item_tracking
-3. If customer mentions modifiers without item name → apply to current_item_being_discussed
-4. After adding item → clear current_item_being_discussed (don't set it in action) and ask "anything else?"
-5. NEVER ask "what would you like to order" immediately after adding an item - always ask "anything else?" or "would you like anything else?"
+1. RESPECT THE CONVERSATION STAGE:
+   - In GREETING stage: Greet warmly, then you'll move to ORDERING
+   - In ORDERING stage: Take orders, ask about modifiers/sizes, add items. When customer says "that's all" or similar, you'll move to REVIEW
+   - In REVIEW stage: Read back the complete order and ask for confirmation. Do NOT take new orders here (unless customer explicitly wants to add more)
+   - In CONCLUSION stage: Thank customer and wrap up. Do NOT take new orders or review again
+   - NEVER go back to GREETING stage once you've moved past it
+
+2. If current_item_being_discussed is set AND customer says "none"/"no"/"that's it"/"nothing"/confirms → action.type MUST be "add_item" with the current item details
+3. If customer mentions a new item (only in ORDERING stage) → set as new current_item_being_discussed using action.current_item_tracking
+4. If customer mentions modifiers without item name → apply to current_item_being_discussed
+5. After adding item → clear current_item_being_discussed (don't set it in action) and ask "anything else?"
+6. NEVER ask "what would you like to order" immediately after adding an item - always ask "anything else?" or "would you like anything else?"
 
 Based on the conversation, determine:
 1. What the customer wants

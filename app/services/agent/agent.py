@@ -5,6 +5,7 @@ from openai import AsyncOpenAI
 from app.core.config import settings
 from app.services.agent.state import ConversationState
 from app.services.agent.prompt import get_system_prompt, get_user_prompt
+from app.services.agent.stages import ConversationStage
 from app.services.menu.repository import MenuRepository
 
 
@@ -22,7 +23,7 @@ class AgentService:
         state = ConversationState(
             call_sid=call_sid,
             menu_context=menu_text,
-            stage="greeting",
+            stage=ConversationStage.GREETING,
         )
         # Store item requirements in state for later use
         if item_requirements_text:
@@ -66,7 +67,8 @@ class AgentService:
             item_needs_size=state.current_item_needs_size,
             current_order_summary=order_summary,
             current_item_modifiers=state.current_item_modifiers,
-            current_item_quantity=state.current_item_quantity
+            current_item_quantity=state.current_item_quantity,
+            conversation_stage=state.stage
         )
 
         # Call LLM
@@ -155,11 +157,31 @@ class AgentService:
             # Add agent response to transcript
             state.add_transcript_turn("Agent", agent_response.get("response", ""))
             
-            # Update stage
-            if intent == "confirming_order":
-                state.stage = "confirming"
-            elif intent == "completing":
-                state.stage = "completed"
+            # Update stage based on intent and order state
+            # Stage transitions:
+            # GREETING -> ORDERING: After greeting (first interaction after greeting)
+            # ORDERING -> REVIEW: When customer indicates done ordering
+            # REVIEW -> CONCLUSION: After order is confirmed
+            
+            user_input_lower = user_input.lower().strip()
+            done_ordering_indicators = ["that's all", "that's it", "nothing else", "i'm done", "i'm finished", 
+                                      "that's everything", "no that's all", "no thanks that's all"]
+            is_done_ordering = any(indicator in user_input_lower for indicator in done_ordering_indicators)
+            
+            if state.stage == ConversationStage.GREETING:
+                # Move to ordering after greeting
+                state.stage = ConversationStage.ORDERING
+            elif state.stage == ConversationStage.ORDERING:
+                # Move to review if customer indicates they're done ordering
+                if is_done_ordering or intent == "confirming_order":
+                    state.stage = ConversationStage.REVIEW
+            elif state.stage == ConversationStage.REVIEW:
+                # Move to conclusion after order is confirmed
+                if intent == "completing" or "yes" in user_input_lower or "correct" in user_input_lower or "that's right" in user_input_lower:
+                    state.stage = ConversationStage.CONCLUSION
+                # If they want to add more, go back to ordering
+                elif "add" in user_input_lower or "more" in user_input_lower or intent == "adding_item":
+                    state.stage = ConversationStage.ORDERING
             
             return agent_response
 
@@ -208,7 +230,7 @@ Make them feel valued and welcomed to the restaurant. Keep it brief (1-2 sentenc
             greeting = agent_response.get("response", f"Hello! Welcome to {settings.restaurant_name}. How can I help you today?")
 
             state.add_transcript_turn("Agent", greeting)
-            state.stage = "taking_order"
+            state.stage = ConversationStage.ORDERING  # Move to ordering after greeting
 
             return greeting
         except Exception:

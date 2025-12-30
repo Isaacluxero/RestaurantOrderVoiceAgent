@@ -139,13 +139,15 @@ class CallSessionManager:
 
             if intent == "completing":
                 # Read back order and end call
+                from app.services.agent.stages import ConversationStage
                 order_summary = session.state.get_order_summary()
                 from app.core.config import settings
                 response_text = f"Perfect! Your order: {order_summary}. Thank you for calling {settings.restaurant_name}!"
-                session.state.stage = "completed"
+                session.state.stage = ConversationStage.CONCLUSION
 
         # Generate TwiML response
-        if session.state.stage == "completed":
+        from app.services.agent.stages import ConversationStage
+        if session.state.stage == ConversationStage.CONCLUSION:
             # End call
             return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>

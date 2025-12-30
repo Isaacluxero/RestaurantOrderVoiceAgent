@@ -1,6 +1,7 @@
 """Conversation state management."""
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
+from app.services.agent.stages import ConversationStage
 
 
 class OrderItem(BaseModel):
@@ -16,9 +17,9 @@ class ConversationState(BaseModel):
 
     call_sid: str
     transcript: List[str] = []  # List of conversation turns
-    current_order: List[OrderItem] = []
+    current_order: List[OrderItem] = []  # Items currently in the order
     pending_clarifications: List[str] = []  # Questions waiting for answers
-    stage: str = "greeting"  # greeting, taking_order, confirming, completed
+    stage: ConversationStage = ConversationStage.GREETING  # Current conversation stage
     menu_context: Optional[str] = None  # Menu text for LLM context
     current_item_being_discussed: Optional[str] = None  # Track which item is currently being customized
     current_item_quantity: int = 1  # Quantity for current item
