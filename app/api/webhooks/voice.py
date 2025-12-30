@@ -19,15 +19,21 @@ def get_base_url(request: Request) -> str:
     """
     Get the base URL for constructing absolute URLs.
     
-    Uses BASE_URL environment variable if set (e.g., for Railway),
-    otherwise constructs from request.
+    Uses BASE_URL environment variable if set, otherwise uses request.base_url.
+    On Railway, request.base_url should work correctly.
     """
-    if settings.base_url:
-        # Use configured base URL (e.g., from Railway environment variable)
-        return settings.base_url.rstrip('/')
+    # Check for BASE_URL env var first (explicit override)
+    import os
+    base_url_env = os.getenv("BASE_URL", "").strip()
+    if base_url_env:
+        logger.info(f"[BASE_URL] Using BASE_URL from environment: {base_url_env}")
+        return base_url_env.rstrip('/')
     
-    # Fall back to request.base_url (works on Railway)
-    return str(request.base_url).rstrip('/')
+    # Use request.base_url (works on Railway)
+    base_url = str(request.base_url).rstrip('/')
+    logger.info(f"[BASE_URL] Using request.base_url: {base_url}")
+    
+    return base_url
 
 
 def get_session_manager(
@@ -52,7 +58,8 @@ async def handle_incoming_call(
     """
     logger.info(
         f"[INCOMING CALL] Received incoming call webhook - CallSid: {CallSid}, "
-        f"Client: {request.client.host if request.client else 'unknown'}"
+        f"Client: {request.client.host if request.client else 'unknown'}, "
+        f"URL: {request.url}, Base URL: {request.base_url}"
     )
     
     try:
