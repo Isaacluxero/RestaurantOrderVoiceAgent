@@ -21,8 +21,11 @@ class ConversationState(BaseModel):
     stage: str = "greeting"  # greeting, taking_order, confirming, completed
     menu_context: Optional[str] = None  # Menu text for LLM context
     current_item_being_discussed: Optional[str] = None  # Track which item is currently being customized
+    current_item_quantity: int = 1  # Quantity for current item
+    current_item_modifiers: List[str] = []  # Modifiers for current item
     current_item_needs_size: bool = False  # Track if current item needs size specification
     current_item_is_complete: bool = False  # Track if current item discussion is complete
+    current_item_customization_stage: str = ""  # "name", "quantity", "modifiers", "size", "complete"
 
     def add_transcript_turn(self, role: str, text: str) -> None:
         """Add a turn to the transcript."""
@@ -54,6 +57,35 @@ class ConversationState(BaseModel):
     def clear_current_item_discussion(self) -> None:
         """Clear the current item being discussed."""
         self.current_item_being_discussed = None
+        self.current_item_quantity = 1
+        self.current_item_modifiers = []
         self.current_item_needs_size = False
         self.current_item_is_complete = False
+        self.current_item_customization_stage = ""
+    
+    def set_current_item(self, item_name: str, quantity: int = 1) -> None:
+        """Set the current item being discussed."""
+        self.current_item_being_discussed = item_name
+        self.current_item_quantity = quantity
+        self.current_item_modifiers = []
+        self.current_item_is_complete = False
+        self.current_item_customization_stage = "name"
+    
+    def add_modifier_to_current_item(self, modifier: str) -> None:
+        """Add a modifier to the current item."""
+        if modifier and modifier not in self.current_item_modifiers:
+            self.current_item_modifiers.append(modifier)
+    
+    def complete_current_item(self) -> Optional[OrderItem]:
+        """Complete the current item and return it as an OrderItem."""
+        if not self.current_item_being_discussed:
+            return None
+        
+        item = OrderItem(
+            item_name=self.current_item_being_discussed,
+            quantity=self.current_item_quantity,
+            modifiers=self.current_item_modifiers.copy()
+        )
+        self.clear_current_item_discussion()
+        return item
 
