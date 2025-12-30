@@ -1,4 +1,5 @@
 """Call session manager."""
+import logging
 from typing import Dict, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +14,8 @@ from app.services.ordering.validator import OrderValidator
 from app.services.persistence.calls import CallPersistenceService
 from app.services.persistence.orders import OrderPersistenceService
 from app.services.agent.state import OrderItem as StateOrderItem
+
+logger = logging.getLogger(__name__)
 
 
 class CallSessionManager:
@@ -112,14 +115,18 @@ class CallSessionManager:
 
         # Handle action
         if action.get("type") == "add_item":
+            logger.info("=" * 80)
+            logger.info(f"[SESSION MANAGER] add_item action received - Action: {action}")
             order_item = await self.order_parser.parse_agent_action(
                 action, speech_result
             )
+            logger.info(f"[SESSION MANAGER] Parsed order_item: {order_item}")
             if order_item:
                 # Validate item
                 is_valid, errors = await self.order_parser.validate_order_item(
                     order_item
                 )
+                logger.info(f"[SESSION MANAGER] Item validation - Valid: {is_valid}, Errors: {errors}")
                 if is_valid:
                     # Add to state
                     state_item = StateOrderItem(
@@ -127,11 +134,17 @@ class CallSessionManager:
                         quantity=order_item.quantity,
                         modifiers=order_item.modifiers,
                     )
+                    logger.info(f"[SESSION MANAGER] Adding item to state - Item: {state_item.item_name}, Qty: {state_item.quantity}, Mods: {state_item.modifiers}")
                     session.state.add_order_item(state_item)
+                    logger.info(f"[SESSION MANAGER] Item added! Current order now has {len(session.state.current_order)} items")
+                    logger.info(f"[SESSION MANAGER] Current order items: {[{'name': item.item_name, 'qty': item.quantity, 'mods': item.modifiers} for item in session.state.current_order]}")
+                    logger.info("=" * 80)
                 else:
+                    logger.warning(f"[SESSION MANAGER] Item validation failed: {errors}")
                     # Item not valid, agent should have handled this, but add error context
                     if errors:
                         response_text += f" {errors[0]}"
+                    logger.info("=" * 80)
 
         # Check if order is being confirmed
         if intent == "confirming_order" or intent == "completing":
