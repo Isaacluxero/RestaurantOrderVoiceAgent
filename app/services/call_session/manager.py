@@ -43,11 +43,12 @@ class CallSessionManager:
         # Create call record in database
         call_record = await self.call_persistence.create_call(call_sid)
 
-        # Get menu text for context
+        # Get menu text and requirements for context
         menu_text = await self.menu_repository.get_menu_text()
+        item_requirements_text = await self.menu_repository.get_item_requirements_text()
 
         # Initialize conversation state
-        state = await self.agent_service.initialize_state(call_sid, menu_text)
+        state = await self.agent_service.initialize_state(call_sid, menu_text, item_requirements_text)
 
         # Create session
         session = CallSession(
@@ -194,38 +195,53 @@ class CallSessionManager:
             status: Call status - "completed", "failed", "busy", or "no-answer"
         """
         from datetime import datetime
+        from sqlalchemy import select, func
+        from app.db.models import Order
         
         session = await self.get_session(call_sid)
-        if session:
-            # Update call status
-            # Map Twilio statuses to our statuses
-            if status in ["failed", "busy", "no-answer"]:
-                db_status = "failed"
-            else:
-                db_status = "completed"
-            
-            await self.call_persistence.update_call_status(
-                call_sid, db_status, ended_at=datetime.utcnow()
-            )
-
-            # Update transcript if available
-            if session.state:
-                transcript = session.state.get_transcript_text()
-                if transcript:
-                    await self.call_persistence.update_call_transcript(
-                        call_sid, transcript
-                    )
-
-            # Remove from memory
-            if call_sid in self.sessions:
-                del self.sessions[call_sid]
+        
+        # Get the call record to check for orders
+        call_record = await self.call_persistence.get_call_by_sid(call_sid)
+        if not call_record:
+            # Call doesn't exist, nothing to do
+            return
+        
+        # Check if call has any orders in the database
+        result = await self.db.execute(
+            select(func.count(Order.id)).where(Order.call_id == call_record.id)
+        )
+        order_count = result.scalar() or 0
+        
+        # Also check session state for orders (in case they're in memory but not persisted)
+        has_orders_in_session = False
+        if session and session.state and session.state.current_order:
+            has_orders_in_session = len(session.state.current_order) > 0
+        
+        # Determine final status
+        # If no orders, always mark as failed
+        if order_count == 0 and not has_orders_in_session:
+            db_status = "failed"
+        # If Twilio status indicates failure, mark as failed
+        elif status in ["failed", "busy", "no-answer"]:
+            db_status = "failed"
+        # Otherwise mark as completed (has orders)
         else:
-            # Session doesn't exist in memory, but we should still update the DB status
-            if status in ["failed", "busy", "no-answer"]:
-                db_status = "failed"
-            else:
-                db_status = "completed"
-            await self.call_persistence.update_call_status(
-                call_sid, db_status, ended_at=datetime.utcnow()
-            )
+            db_status = "completed"
+        
+        # Always update status (never leave as in_progress)
+        await self.call_persistence.update_call_status(
+            call_sid, db_status, ended_at=datetime.utcnow()
+        )
+
+        # Update transcript if available
+        if session and session.state:
+            transcript = session.state.get_transcript_text()
+            if transcript:
+                await self.call_persistence.update_call_transcript(
+                    call_sid, transcript
+                )
+
+        # Remove from memory
+        if call_sid in self.sessions:
+            del self.sessions[call_sid]
 

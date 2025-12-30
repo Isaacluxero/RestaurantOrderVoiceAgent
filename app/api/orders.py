@@ -81,6 +81,30 @@ async def get_order_history(
         # Convert to response models
         call_responses = []
         for call in calls:
+            # Safety check: If call has ended but status is still "in_progress", 
+            # determine correct status based on orders
+            if call.status == "in_progress" and call.ended_at:
+                # Call has ended but status wasn't updated - fix it
+                if len(call.orders) == 0:
+                    call.status = "failed"
+                else:
+                    call.status = "completed"
+                # Update in database
+                await db.commit()
+                await db.refresh(call)
+                logger.warning(
+                    f"[ORDERS HISTORY] Fixed stuck in_progress status for call {call.id} "
+                    f"(now {call.status})"
+                )
+            
+            # Also ensure calls without orders are marked as failed
+            if call.status == "completed" and len(call.orders) == 0:
+                call.status = "failed"
+                await db.commit()
+                await db.refresh(call)
+                logger.info(
+                    f"[ORDERS HISTORY] Marked call {call.id} as failed (no orders)"
+                )
             order_responses = []
             for order in call.orders:
                 item_responses = []

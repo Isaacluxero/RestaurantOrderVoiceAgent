@@ -20,6 +20,9 @@ class ConversationState(BaseModel):
     pending_clarifications: List[str] = []  # Questions waiting for answers
     stage: str = "greeting"  # greeting, taking_order, confirming, completed
     menu_context: Optional[str] = None  # Menu text for LLM context
+    current_item_being_discussed: Optional[str] = None  # Track which item is currently being customized
+    current_item_needs_size: bool = False  # Track if current item needs size specification
+    current_item_is_complete: bool = False  # Track if current item discussion is complete
 
     def add_transcript_turn(self, role: str, text: str) -> None:
         """Add a turn to the transcript."""
@@ -47,4 +50,10 @@ class ConversationState(BaseModel):
             qty_str = f"{item.quantity}x " if item.quantity > 1 else ""
             lines.append(f"- {qty_str}{item.item_name}{mod_str}")
         return "\n".join(lines)
+    
+    def clear_current_item_discussion(self) -> None:
+        """Clear the current item being discussed."""
+        self.current_item_being_discussed = None
+        self.current_item_needs_size = False
+        self.current_item_is_complete = False
 

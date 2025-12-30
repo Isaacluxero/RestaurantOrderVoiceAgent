@@ -1,0 +1,91 @@
+{
+  "items": {
+    "cheeseburger": {
+      "required_components": ["patty"],
+      "optional_components": ["cheese", "lettuce", "tomato", "pickles", "onions"],
+      "optional_modifiers": ["no onions", "extra cheese", "no pickles", "no lettuce", "double patty"],
+      "size_required": false,
+      "customization_flow": [
+        "patty_quantity",
+        "cheese",
+        "vegetables",
+        "add_ons"
+      ],
+      "description": "A burger with cheese. Must have at least one patty."
+    },
+    "hamburger": {
+      "required_components": ["patty"],
+      "optional_components": ["lettuce", "tomato", "pickles", "onions"],
+      "optional_modifiers": ["no onions", "no pickles", "no lettuce", "double patty"],
+      "size_required": false,
+      "customization_flow": [
+        "patty_quantity",
+        "vegetables",
+        "add_ons"
+      ],
+      "description": "A burger without cheese. Must have at least one patty."
+    },
+    "fries": {
+      "required_components": [],
+      "optional_components": [],
+      "optional_modifiers": ["large", "small", "extra salt"],
+      "size_required": true,
+      "customization_flow": [
+        "size"
+      ],
+      "description": "French fries. Size must be specified."
+    },
+    "onion rings": {
+      "required_components": [],
+      "optional_components": [],
+      "optional_modifiers": ["large", "small"],
+      "size_required": true,
+      "customization_flow": [
+        "size"
+      ],
+      "description": "Onion rings. Size must be specified."
+    },
+    "coca cola": {
+      "required_components": [],
+      "optional_components": [],
+      "optional_modifiers": ["large", "medium", "small"],
+      "size_required": true,
+      "customization_flow": [
+        "size"
+      ],
+      "description": "Coca Cola drink. Size must be specified."
+    },
+    "sprite": {
+      "required_components": [],
+      "optional_components": [],
+      "optional_modifiers": ["large", "medium", "small"],
+      "size_required": true,
+      "customization_flow": [
+        "size"
+      ],
+      "description": "Sprite drink. Size must be specified."
+    },
+    "water": {
+      "required_components": [],
+      "optional_components": [],
+      "optional_modifiers": ["large", "small"],
+      "size_required": true,
+      "customization_flow": [
+        "size"
+      ],
+      "description": "Bottled water. Size must be specified."
+    }
+  },
+  "rules": {
+    "burger_rules": {
+      "patty_required": true,
+      "invalid_modifiers": ["no patty"],
+      "description": "Burgers must have at least one patty. If customer says 'no patty', do not proceed with the order - either clarify or move on to next item."
+    },
+    "size_rules": {
+      "items_requiring_size": ["fries", "onion rings", "coca cola", "sprite", "water"],
+      "description": "These items require a size to be specified before the item is considered complete."
+    }
+  }
+}
+

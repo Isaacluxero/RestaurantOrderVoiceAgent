@@ -16,7 +16,7 @@ class AgentService:
         self.menu_repository = menu_repository
 
     async def initialize_state(
-        self, call_sid: str, menu_text: str
+        self, call_sid: str, menu_text: str, item_requirements_text: str = ""
     ) -> ConversationState:
         """Initialize conversation state."""
         state = ConversationState(
@@ -24,6 +24,9 @@ class AgentService:
             menu_context=menu_text,
             stage="greeting",
         )
+        # Store item requirements in state for later use
+        if item_requirements_text:
+            state.menu_context += f"\n\n{item_requirements_text}"
         return state
 
     async def process_user_input(
@@ -38,18 +41,37 @@ class AgentService:
         # Add user input to transcript
         state.add_transcript_turn("Customer", user_input)
 
-        # Get menu text if not already loaded
+        # Get menu text and requirements if not already loaded
         if not state.menu_context:
-            state.menu_context = await self.menu_repository.get_menu_text()
+            menu_text = await self.menu_repository.get_menu_text()
+            requirements_text = await self.menu_repository.get_item_requirements_text()
+            state.menu_context = menu_text
+            if requirements_text:
+                state.menu_context += f"\n\n{requirements_text}"
 
         # Build conversation context
         context = state.get_transcript_text()
         if state.current_order:
             context += f"\n\nCurrent order:\n{state.get_order_summary()}"
+        
+        # Add current item tracking context
+        if state.current_item_being_discussed:
+            context += f"\n\nCurrently discussing: {state.current_item_being_discussed}"
+            if state.current_item_needs_size:
+                context += " (needs size)"
 
+        # Get item requirements text for system prompt
+        requirements_text = await self.menu_repository.get_item_requirements_text()
+        menu_text = await self.menu_repository.get_menu_text()
+        
         # Get system and user prompts
-        system_prompt = get_system_prompt(state.menu_context)
-        user_prompt = get_user_prompt(context, user_input)
+        system_prompt = get_system_prompt(menu_text, requirements_text)
+        user_prompt = get_user_prompt(
+            context, 
+            user_input, 
+            current_item=state.current_item_being_discussed,
+            item_needs_size=state.current_item_needs_size
+        )
 
         # Call LLM
         try:
@@ -70,13 +92,36 @@ class AgentService:
             # Add agent response to transcript
             state.add_transcript_turn("Agent", agent_response.get("response", ""))
 
-            # Update state based on intent
+            # Update state based on intent and action
             intent = agent_response.get("intent", "")
+            action = agent_response.get("action", {})
+            
+            # Track current item being discussed
+            current_item_tracking = action.get("current_item_tracking")
+            if current_item_tracking:
+                state.current_item_being_discussed = current_item_tracking
+            elif action.get("type") == "start_item_discussion" and action.get("item_name"):
+                state.current_item_being_discussed = action.get("item_name")
+                # Check if this item needs size
+                item_req = await self.menu_repository.get_item_requirements(action.get("item_name"))
+                if item_req and item_req.get("size_required"):
+                    state.current_item_needs_size = True
+                else:
+                    state.current_item_needs_size = False
+                state.current_item_is_complete = False
+            elif action.get("type") == "complete_item":
+                state.current_item_is_complete = True
+                state.current_item_needs_size = False
+            elif action.get("type") == "add_item":
+                # Item added to order, clear current item tracking
+                state.clear_current_item_discussion()
+            
+            # Update stage
             if intent == "confirming_order":
                 state.stage = "confirming"
             elif intent == "completing":
                 state.stage = "completed"
-
+            
             return agent_response
 
         except json.JSONDecodeError as e:
@@ -95,10 +140,15 @@ class AgentService:
 
     async def get_greeting(self, state: ConversationState) -> str:
         """Get initial greeting message."""
+        menu_text = await self.menu_repository.get_menu_text()
+        requirements_text = await self.menu_repository.get_item_requirements_text()
+        
         if not state.menu_context:
-            state.menu_context = await self.menu_repository.get_menu_text()
+            state.menu_context = menu_text
+            if requirements_text:
+                state.menu_context += f"\n\n{requirements_text}"
 
-        system_prompt = get_system_prompt(state.menu_context)
+        system_prompt = get_system_prompt(menu_text, requirements_text)
         user_prompt = "The customer just called. Give them a warm greeting and ask how you can help."
 
         try:
