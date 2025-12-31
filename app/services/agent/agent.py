@@ -60,7 +60,7 @@ class AgentService:
         logger.info(f"[AGENT INPUT] User Input: '{user_input}'")
         logger.info(f"[AGENT INPUT] Current Stage: {state.stage.value}")
         logger.info(f"[AGENT INPUT] Current Order Summary:\n{order_summary}")
-        logger.info(f"[AGENT INPUT] State.current_item_being_discussed: {state.current_item_being_discussed or 'NONE'}")
+        logger.info(f"[AGENT INPUT] Pending Notes Item: {state.pending_notes_item_name or 'NONE'}")
         logger.info(f"[AGENT INPUT] Current Order Items: {[{'name': item.item_name, 'qty': item.quantity, 'mods': item.modifiers} for item in state.current_order]}")
         logger.info("=" * 80)
         
@@ -131,11 +131,19 @@ class AgentService:
             is_done_ordering = any(indicator in user_input_lower for indicator in done_ordering_indicators)
 
             if is_done_ordering and state.stage == ConversationStage.ORDERING:
-                logger.info("[AGENT FLOW] Detected 'done ordering', moving to REVIEW stage")
-                state.stage = ConversationStage.REVIEW
-                agent_response["response"] = "Great! Let me read back your order to make sure I have everything correct."
-                agent_response["intent"] = "reviewing"
-                agent_response["action"] = {"type": "none"}
+                # Validate that order is not empty before moving to REVIEW
+                if not state.has_items():
+                    logger.warning("[AGENT FLOW] Customer said 'that's all' but order is empty")
+                    agent_response["response"] = "I don't see any items in your order yet. What would you like to order?"
+                    agent_response["intent"] = "ordering"
+                    agent_response["action"] = {"type": "none"}
+                else:
+                    logger.info("[AGENT FLOW] Detected 'done ordering', moving to REVIEW stage")
+                    state.stage = ConversationStage.REVIEW
+                    state.order_read_back = False  # Reset flag for new REVIEW entry
+                    agent_response["response"] = "Great! Let me read back your order to make sure I have everything correct."
+                    agent_response["intent"] = "reviewing"
+                    agent_response["action"] = {"type": "none"}
             
             # Add agent response to transcript
             state.add_transcript_turn("Agent", agent_response.get("response", ""))
@@ -161,8 +169,14 @@ class AgentService:
                 if intent == "reviewing" or "that's all" in user_input_lower or "that's it" in user_input_lower:
                     state.stage = ConversationStage.REVIEW
             elif state.stage == ConversationStage.REVIEW:
+                # Validate order is not empty before allowing conclusion
+                if not state.has_items():
+                    logger.warning("[AGENT FLOW] Attempted to conclude review but order is empty")
+                    agent_response["response"] = "I don't see any items in your order. What would you like to order?"
+                    agent_response["intent"] = "ordering"
+                    state.stage = ConversationStage.ORDERING
                 # Priority: Check for confirmation FIRST (go to CONCLUSION)
-                if intent == "concluding" or is_confirming:
+                elif intent == "concluding" or is_confirming:
                     state.stage = ConversationStage.CONCLUSION
                     agent_response["intent"] = "completing"
                 # Then check for revision requests (go to REVISION)
@@ -184,7 +198,7 @@ class AgentService:
             logger.info(f"[AGENT OUTPUT] Intent: {agent_response.get('intent', '')}")
             logger.info(f"[AGENT OUTPUT] Action: {json.dumps(agent_response.get('action', {}), indent=2)}")
             logger.info(f"[AGENT OUTPUT] Final Stage: {state.stage.value}")
-            logger.info(f"[AGENT OUTPUT] Final current_item_being_discussed: {state.current_item_being_discussed or 'NONE'}")
+            logger.info(f"[AGENT OUTPUT] Final Pending Notes Item: {state.pending_notes_item_name or 'NONE'}")
             logger.info(f"[AGENT OUTPUT] Final Order Items: {[{'name': item.item_name, 'qty': item.quantity, 'mods': item.modifiers} for item in state.current_order]}")
             logger.info("=" * 80)
             

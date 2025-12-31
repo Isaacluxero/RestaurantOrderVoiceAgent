@@ -14,6 +14,7 @@ from app.services.ordering.validator import OrderValidator
 from app.services.persistence.calls import CallPersistenceService
 from app.services.persistence.orders import OrderPersistenceService
 from app.services.agent.state import OrderItem as StateOrderItem
+from app.services.agent.constants import NO_RESPONSE_INDICATORS
 
 logger = logging.getLogger(__name__)
 
@@ -112,122 +113,29 @@ class CallSessionManager:
         intent = agent_response.get("intent", "")
         action = agent_response.get("action", {})
 
+        # Validate action type is allowed in current stage
+        action_type = action.get("type", "none")
+        if not self._is_action_allowed_in_stage(action_type, session.state.stage):
+            logger.warning(
+                f"[SESSION MANAGER] Action '{action_type}' not allowed in stage "
+                f"{session.state.stage.value}"
+            )
+            # Reset action to none if invalid for current stage
+            action = {"type": "none"}
+
         # Handle action
         if action.get("type") == "add_item":
-            logger.info("=" * 80)
-            logger.info(f"[SESSION MANAGER] add_item action received - Action: {action}")
-            order_item = await self.order_parser.parse_agent_action(
-                action, speech_result
+            response_text = await self._handle_add_item(
+                action, speech_result, session, response_text
             )
-            logger.info(f"[SESSION MANAGER] Parsed order_item: {order_item}")
-            if order_item:
-                # Validate item
-                is_valid, errors = await self.order_parser.validate_order_item(
-                    order_item
-                )
-                logger.info(f"[SESSION MANAGER] Item validation - Valid: {is_valid}, Errors: {errors}")
-                if is_valid:
-                    # Add to state
-                    state_item = StateOrderItem(
-                        item_name=order_item.item_name,
-                        quantity=order_item.quantity,
-                        modifiers=order_item.modifiers,
-                    )
-                    logger.info(f"[SESSION MANAGER] Adding item to state - Item: {state_item.item_name}, Qty: {state_item.quantity}, Mods: {state_item.modifiers}")
-                    session.state.add_order_item(state_item)
-                    logger.info(f"[SESSION MANAGER] Item added! Current order now has {len(session.state.current_order)} items")
-                    logger.info(f"[SESSION MANAGER] Current order items: {[{'name': item.item_name, 'qty': item.quantity, 'mods': item.modifiers} for item in session.state.current_order]}")
-                    logger.info("=" * 80)
-                else:
-                    logger.warning(f"[SESSION MANAGER] Item validation failed: {errors}")
-                    # Item not valid, agent should have handled this, but add error context
-                    if errors:
-                        response_text += f" {errors[0]}"
-                    logger.info("=" * 80)
-
-            # If the customer did NOT provide notes for this item, ask for notes next (with examples)
-            notes_text = ""
-            if isinstance(action.get("notes"), str):
-                notes_text = action.get("notes", "").strip()
-            if not notes_text and order_item:
-                try:
-                    examples = await self.menu_repository.get_item_options(order_item.item_name)
-                except Exception:
-                    examples = []
-
-                session.state.pending_notes_item_name = order_item.item_name
-                session.state.pending_notes_item_index = max(0, len(session.state.current_order) - 1)
-
-                if examples:
-                    sample = ", ".join(examples[:3])
-                    response_text = (
-                        f"Got it. Any notes or customizations for your {order_item.item_name}? "
-                        f"For example: {sample}. If not, just say no."
-                    )
-                else:
-                    response_text = (
-                        f"Got it. Any notes or customizations for your {order_item.item_name}? "
-                        f"If not, just say no."
-                    )
-
         elif action.get("type") == "add_notes":
-            notes_text = action.get("notes", "")
-            if isinstance(notes_text, str):
-                notes_text = notes_text.strip()
-            else:
-                notes_text = ""
-
-            idx = session.state.pending_notes_item_index
-            if notes_text and idx is not None and 0 <= idx < len(session.state.current_order):
-                item = session.state.current_order[idx]
-                if not item.modifiers:
-                    item.modifiers = [notes_text]
-                else:
-                    item.modifiers.append(notes_text)
-
-            # Clear pending notes state
-            session.state.pending_notes_item_name = None
-            session.state.pending_notes_item_index = None
-
-            # Now continue ordering normally
-            response_text = "Perfect—anything else?"
-
+            response_text = await self._handle_add_notes(
+                action, speech_result, session, response_text
+            )
         elif action.get("type") == "remove_item":
-            item_name = action.get("item_name", "").strip().lower()
-            if item_name:
-                # Find and remove the item from the order
-                original_count = len(session.state.current_order)
-                session.state.current_order = [
-                    item for item in session.state.current_order 
-                    if item.item_name.lower() != item_name
-                ]
-                removed_count = original_count - len(session.state.current_order)
-                if removed_count > 0:
-                    logger.info(f"[SESSION MANAGER] Removed item: {item_name}")
-                    response_text = f"Removed {item_name} from your order. Anything else you'd like to change?"
-                else:
-                    logger.warning(f"[SESSION MANAGER] Tried to remove item '{item_name}' but it wasn't found in order")
-                    response_text = f"I don't see {item_name} in your order. What else would you like to change?"
-
+            response_text = await self._handle_remove_item(action, session, response_text)
         elif action.get("type") == "modify_item":
-            item_name = action.get("item_name", "").strip().lower()
-            notes_text = action.get("notes", "").strip()
-            if item_name:
-                # Find the item and update its notes
-                found = False
-                for item in session.state.current_order:
-                    if item.item_name.lower() == item_name:
-                        if notes_text:
-                            item.modifiers = [notes_text]
-                        else:
-                            item.modifiers = []
-                        logger.info(f"[SESSION MANAGER] Modified item: {item_name} with notes: {notes_text}")
-                        response_text = f"Updated {item_name}. Anything else you'd like to change?"
-                        found = True
-                        break
-                if not found:
-                    logger.warning(f"[SESSION MANAGER] Tried to modify item '{item_name}' but it wasn't found in order")
-                    response_text = f"I don't see {item_name} in your order. What else would you like to change?"
+            response_text = await self._handle_modify_item(action, session, response_text)
 
         # Check if order is being confirmed
         if intent == "confirming_order" or intent == "completing":
@@ -244,14 +152,12 @@ class CallSessionManager:
 
         # Handle REVIEW stage: read back order on first entry (server-side)
         from app.services.agent.stages import ConversationStage
-        if session.state.stage == ConversationStage.REVIEW:
-            # Check if this is the first time entering REVIEW (order not yet read back in recent transcript)
-            recent_transcript = session.state.get_transcript_text()[-300:].lower()
-            if "read back" not in recent_transcript and "here's your order" not in recent_transcript and "order:" not in recent_transcript:
-                # First time in REVIEW - read back the order
-                order_summary = session.state.get_order_summary()
-                response_text = f"Perfect! Here's your order: {order_summary}. Does that look correct?"
-                logger.info(f"[SESSION MANAGER] First entry into REVIEW stage - reading back order")
+        if session.state.stage == ConversationStage.REVIEW and not session.state.order_read_back:
+            # First time in REVIEW - read back the order
+            order_summary = session.state.get_order_summary()
+            response_text = f"Perfect! Here's your order: {order_summary}. Does that look correct?"
+            session.state.order_read_back = True  # Mark as read back
+            logger.info(f"[SESSION MANAGER] First entry into REVIEW stage - reading back order")
         
         # Generate TwiML response
         if session.state.stage == ConversationStage.CONCLUSION:
@@ -268,6 +174,233 @@ class CallSessionManager:
                 response_text,
                 gather_url,
             )
+
+    def _is_action_allowed_in_stage(
+        self, action_type: str, stage: ConversationStage
+    ) -> bool:
+        """
+        Validate that an action type is allowed in the current stage.
+        
+        Returns:
+            True if action is allowed, False otherwise
+        """
+        from app.services.agent.stages import ConversationStage
+
+        # Map of stages to allowed action types
+        stage_allowed_actions = {
+            ConversationStage.GREETING: ["none"],
+            ConversationStage.ORDERING: ["add_item", "add_notes", "none"],
+            ConversationStage.REVIEW: ["none"],  # Review only, no modifications
+            ConversationStage.REVISION: [
+                "add_item",
+                "remove_item",
+                "modify_item",
+                "add_notes",
+                "none",
+            ],
+            ConversationStage.CONCLUSION: ["none"],
+        }
+
+        allowed = stage_allowed_actions.get(stage, ["none"])
+        return action_type in allowed
+
+    async def _handle_add_item(
+        self,
+        action: Dict[str, Any],
+        speech_result: Optional[str],
+        session: CallSession,
+        response_text: str,
+    ) -> str:
+        """Handle add_item action."""
+        logger.info("=" * 80)
+        logger.info(f"[SESSION MANAGER] add_item action received - Action: {action}")
+        order_item = await self.order_parser.parse_agent_action(action, speech_result)
+        logger.info(f"[SESSION MANAGER] Parsed order_item: {order_item}")
+        
+        if order_item:
+            # Validate item
+            is_valid, errors = await self.order_parser.validate_order_item(order_item)
+            logger.info(
+                f"[SESSION MANAGER] Item validation - Valid: {is_valid}, Errors: {errors}"
+            )
+            
+            if is_valid:
+                # Add to state
+                state_item = StateOrderItem(
+                    item_name=order_item.item_name,
+                    quantity=order_item.quantity,
+                    modifiers=order_item.modifiers,
+                )
+                logger.info(
+                    f"[SESSION MANAGER] Adding item to state - Item: {state_item.item_name}, "
+                    f"Qty: {state_item.quantity}, Mods: {state_item.modifiers}"
+                )
+                session.state.add_order_item(state_item)
+                logger.info(
+                    f"[SESSION MANAGER] Item added! Current order now has "
+                    f"{len(session.state.current_order)} items"
+                )
+                order_items_repr = [
+                    {"name": item.item_name, "qty": item.quantity, "mods": item.modifiers}
+                    for item in session.state.current_order
+                ]
+                logger.info(f"[SESSION MANAGER] Current order items: {order_items_repr}")
+                logger.info("=" * 80)
+
+                # If the customer did NOT provide notes for this item, ask for notes next
+                notes_text = ""
+                if isinstance(action.get("notes"), str):
+                    notes_text = action.get("notes", "").strip()
+                
+                if not notes_text:
+                    try:
+                        examples = await self.menu_repository.get_item_options(
+                            order_item.item_name
+                        )
+                    except Exception:
+                        examples = []
+
+                    session.state.pending_notes_item_name = order_item.item_name
+                    session.state.pending_notes_item_index = max(
+                        0, len(session.state.current_order) - 1
+                    )
+
+                    if examples:
+                        sample = ", ".join(examples[:3])
+                        response_text = (
+                            f"Got it. Any notes or customizations for your {order_item.item_name}? "
+                            f"For example: {sample}. If not, just say no."
+                        )
+                    else:
+                        response_text = (
+                            f"Got it. Any notes or customizations for your {order_item.item_name}? "
+                            f"If not, just say no."
+                        )
+            else:
+                logger.warning(f"[SESSION MANAGER] Item validation failed: {errors}")
+                if errors:
+                    response_text += f" {errors[0]}"
+                logger.info("=" * 80)
+        else:
+            logger.info("=" * 80)
+
+        return response_text
+
+    async def _handle_add_notes(
+        self,
+        action: Dict[str, Any],
+        speech_result: Optional[str],
+        session: CallSession,
+        response_text: str,
+    ) -> str:
+        """Handle add_notes action."""
+        notes_text = action.get("notes", "")
+        if isinstance(notes_text, str):
+            notes_text = notes_text.strip()
+        else:
+            notes_text = ""
+
+        # Check if customer said "no" or "none"
+        user_input_lower = speech_result.lower().strip() if speech_result else ""
+        is_no_response = any(
+            word in user_input_lower for word in NO_RESPONSE_INDICATORS
+        )
+
+        idx = session.state.pending_notes_item_index
+        # Only add notes if they provided actual notes (not just "no")
+        if (
+            notes_text
+            and not is_no_response
+            and idx is not None
+            and 0 <= idx < len(session.state.current_order)
+        ):
+            item = session.state.current_order[idx]
+            if not item.modifiers:
+                item.modifiers = [notes_text]
+            else:
+                item.modifiers.append(notes_text)
+            logger.info(
+                f"[SESSION MANAGER] Added notes to item at index {idx}: {notes_text}"
+            )
+        elif is_no_response:
+            logger.info(
+                f"[SESSION MANAGER] Customer declined notes for item at index {idx}"
+            )
+
+        # Always clear pending notes state after handling the response
+        session.state.clear_pending_notes()
+
+        # Now continue ordering normally
+        return "Perfect—anything else?"
+
+    async def _handle_remove_item(
+        self,
+        action: Dict[str, Any],
+        session: CallSession,
+        response_text: str,
+    ) -> str:
+        """Handle remove_item action."""
+        item_name = action.get("item_name", "").strip().lower()
+        if item_name:
+            # Find and remove the item from the order
+            original_count = len(session.state.current_order)
+            session.state.current_order = [
+                item
+                for item in session.state.current_order
+                if item.item_name.lower() != item_name
+            ]
+            removed_count = original_count - len(session.state.current_order)
+            
+            if removed_count > 0:
+                logger.info(f"[SESSION MANAGER] Removed item: {item_name}")
+                return f"Removed {item_name} from your order. Anything else you'd like to change?"
+            else:
+                logger.warning(
+                    f"[SESSION MANAGER] Tried to remove item '{item_name}' "
+                    f"but it wasn't found in order"
+                )
+                return (
+                    f"I don't see {item_name} in your order. "
+                    f"What else would you like to change?"
+                )
+        return response_text
+
+    async def _handle_modify_item(
+        self,
+        action: Dict[str, Any],
+        session: CallSession,
+        response_text: str,
+    ) -> str:
+        """Handle modify_item action."""
+        item_name = action.get("item_name", "").strip().lower()
+        notes_text = action.get("notes", "").strip()
+        
+        if item_name:
+            # Find the item and update its notes
+            found = False
+            for item in session.state.current_order:
+                if item.item_name.lower() == item_name:
+                    if notes_text:
+                        item.modifiers = [notes_text]
+                    else:
+                        item.modifiers = []
+                    logger.info(
+                        f"[SESSION MANAGER] Modified item: {item_name} with notes: {notes_text}"
+                    )
+                    found = True
+                    return f"Updated {item_name}. Anything else you'd like to change?"
+            
+            if not found:
+                logger.warning(
+                    f"[SESSION MANAGER] Tried to modify item '{item_name}' "
+                    f"but it wasn't found in order"
+                )
+                return (
+                    f"I don't see {item_name} in your order. "
+                    f"What else would you like to change?"
+                )
+        
+        return response_text
 
     async def _persist_order(self, session: CallSession) -> None:
         """Persist the current order to database."""

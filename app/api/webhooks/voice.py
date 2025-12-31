@@ -49,15 +49,15 @@ async def handle_incoming_call(
     )
     
     try:
-        # Create session and get greeting
+    # Create session and get greeting
         logger.debug(f"[INCOMING CALL] Creating session for CallSid: {CallSid}")
-        greeting = await session_manager.get_greeting(CallSid)
+    greeting = await session_manager.get_greeting(CallSid)
         logger.info(f"[INCOMING CALL] Session created, greeting generated (length: {len(greeting)}) - CallSid: {CallSid}")
 
-        # Generate TwiML with Gather to collect user speech
-        from app.services.speech.tts import TextToSpeechService
+    # Generate TwiML with Gather to collect user speech
+    from app.services.speech.tts import TextToSpeechService
 
-        tts_service = TextToSpeechService()
+    tts_service = TextToSpeechService()
         # Construct absolute URL from request (handles proxy headers like ngrok)
         base_url = get_base_url(request)
         gather_url = f"{base_url}/webhooks/voice/gather?CallSid={CallSid}"
@@ -68,8 +68,8 @@ async def handle_incoming_call(
             f"[INCOMING CALL] Successfully processed incoming call - CallSid: {CallSid}, "
             f"TwiML length: {len(twiml)} bytes"
         )
-        return Response(content=twiml, media_type="application/xml")
-    
+    return Response(content=twiml, media_type="application/xml")
+
     except Exception as e:
         logger.error(
             f"[INCOMING CALL] Error processing incoming call - CallSid: {CallSid}, "
@@ -88,7 +88,7 @@ async def handle_gather(
 ):
     """
     Handle gathered speech from Twilio.
-    
+
     Twilio may send GET or POST requests, with SpeechResult in query params or form data.
     This endpoint handles both cases.
     """
@@ -111,17 +111,17 @@ async def handle_gather(
         logger.warning(f"[GATHER] No speech result provided (empty or None) - CallSid: {CallSid}")
     
     try:
-        # Process the speech and generate response
+    # Process the speech and generate response
         # Construct absolute URL from request (handles proxy headers like ngrok)
         base_url = get_base_url(request)
         logger.debug(f"[GATHER] Processing speech for CallSid: {CallSid}")
         twiml = await session_manager.process_user_speech(CallSid, SpeechResult, base_url=base_url)
-        
+
         logger.info(
             f"[GATHER] Successfully processed speech input - CallSid: {CallSid}, "
             f"TwiML length: {len(twiml)} bytes"
         )
-        return Response(content=twiml, media_type="application/xml")
+    return Response(content=twiml, media_type="application/xml")
     
     except Exception as e:
         logger.error(
@@ -161,7 +161,7 @@ async def handle_call_status(
     )
     
     try:
-        if CallStatus in ["completed", "failed", "busy", "no-answer"]:
+    if CallStatus in ["completed", "failed", "busy", "no-answer"]:
             logger.info(
                 f"[CALL STATUS] Ending session for call - CallSid: {CallSid}, "
                 f"Reason: {CallStatus}"
@@ -178,7 +178,7 @@ async def handle_call_status(
                 f"CallSid: {CallSid}, CallStatus: {CallStatus}"
             )
 
-        return Response(content="OK", media_type="text/plain")
+    return Response(content="OK", media_type="text/plain")
     
     except Exception as e:
         logger.error(

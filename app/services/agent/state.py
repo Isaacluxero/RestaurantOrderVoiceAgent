@@ -18,17 +18,11 @@ class ConversationState(BaseModel):
     call_sid: str
     transcript: List[str] = Field(default_factory=list)  # List of conversation turns
     current_order: List[OrderItem] = Field(default_factory=list)  # Items currently in the order
-    pending_clarifications: List[str] = Field(default_factory=list)  # Questions waiting for answers
     stage: ConversationStage = ConversationStage.GREETING  # Current conversation stage
     menu_context: Optional[str] = None  # Menu text for LLM context
-    current_item_being_discussed: Optional[str] = None  # Track which item is currently being customized
-    current_item_quantity: int = 1  # Quantity for current item
-    current_item_modifiers: List[str] = Field(default_factory=list)  # Modifiers for current item
-    current_item_needs_size: bool = False  # Track if current item needs size specification
-    current_item_is_complete: bool = False  # Track if current item discussion is complete
-    current_item_customization_stage: str = ""  # "name", "quantity", "modifiers", "size", "complete"
     pending_notes_item_name: Optional[str] = None  # If set, we're waiting for notes/customizations for this item
     pending_notes_item_index: Optional[int] = None  # Index into current_order for pending notes item
+    order_read_back: bool = False  # Flag to track if order has been read back in REVIEW stage
 
     def add_transcript_turn(self, role: str, text: str) -> None:
         """Add a turn to the transcript."""
@@ -45,7 +39,17 @@ class ConversationState(BaseModel):
     def clear_order(self) -> None:
         """Clear the current order."""
         self.current_order = []
-
+        self.order_read_back = False
+    
+    def clear_pending_notes(self) -> None:
+        """Clear pending notes state."""
+        self.pending_notes_item_name = None
+        self.pending_notes_item_index = None
+    
+    def has_items(self) -> bool:
+        """Check if order has any items."""
+        return len(self.current_order) > 0
+    
     def get_order_summary(self) -> str:
         """Get a text summary of the current order."""
         if not self.current_order:
@@ -56,39 +60,4 @@ class ConversationState(BaseModel):
             qty_str = f"{item.quantity}x " if item.quantity > 1 else ""
             lines.append(f"- {qty_str}{item.item_name}{mod_str}")
         return "\n".join(lines)
-    
-    def clear_current_item_discussion(self) -> None:
-        """Clear the current item being discussed."""
-        self.current_item_being_discussed = None
-        self.current_item_quantity = 1
-        self.current_item_modifiers = []
-        self.current_item_needs_size = False
-        self.current_item_is_complete = False
-        self.current_item_customization_stage = ""
-    
-    def set_current_item(self, item_name: str, quantity: int = 1) -> None:
-        """Set the current item being discussed."""
-        self.current_item_being_discussed = item_name
-        self.current_item_quantity = quantity
-        self.current_item_modifiers = []
-        self.current_item_is_complete = False
-        self.current_item_customization_stage = "name"
-    
-    def add_modifier_to_current_item(self, modifier: str) -> None:
-        """Add a modifier to the current item."""
-        if modifier and modifier not in self.current_item_modifiers:
-            self.current_item_modifiers.append(modifier)
-    
-    def complete_current_item(self) -> Optional[OrderItem]:
-        """Complete the current item and return it as an OrderItem."""
-        if not self.current_item_being_discussed:
-            return None
-        
-        item = OrderItem(
-            item_name=self.current_item_being_discussed,
-            quantity=self.current_item_quantity,
-            modifiers=self.current_item_modifiers.copy()
-        )
-        self.clear_current_item_discussion()
-        return item
 
