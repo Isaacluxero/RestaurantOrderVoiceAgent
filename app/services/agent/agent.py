@@ -7,13 +7,9 @@ from app.core.config import settings
 from app.services.agent.state import ConversationState
 from app.services.agent.prompt import get_system_prompt, get_user_prompt
 from app.services.agent.stages import ConversationStage
-from app.services.agent.flow_manager import ConversationFlowManager
 from app.services.menu.repository import MenuRepository
 
 logger = logging.getLogger(__name__)
-
-# Module-level flow manager storage (persists across requests)
-_flow_managers: Dict[str, ConversationFlowManager] = {}
 
 
 class AgentService:
@@ -57,29 +53,35 @@ class AgentService:
         context = state.get_transcript_text()
         order_summary = state.get_order_summary()
         menu_text = await self.menu_repository.get_menu_text()
-        
-        # Get flow manager BEFORE prompts to check current item
-        flow_manager = self._get_flow_manager_for_state(state)
-        current_item_name = flow_manager.get_current_item_name()
-        
+
         # ===== COMPREHENSIVE LOGGING: AGENT INPUTS =====
         logger.info("=" * 80)
         logger.info(f"[AGENT INPUT] CallSid: {state.call_sid}")
         logger.info(f"[AGENT INPUT] User Input: '{user_input}'")
         logger.info(f"[AGENT INPUT] Current Stage: {state.stage.value}")
         logger.info(f"[AGENT INPUT] Current Order Summary:\n{order_summary}")
-        logger.info(f"[AGENT INPUT] Flow Manager Current Item: {current_item_name or 'NONE'}")
         logger.info(f"[AGENT INPUT] State.current_item_being_discussed: {state.current_item_being_discussed or 'NONE'}")
         logger.info(f"[AGENT INPUT] Current Order Items: {[{'name': item.item_name, 'qty': item.quantity, 'mods': item.modifiers} for item in state.current_order]}")
         logger.info("=" * 80)
         
         # Get system and user prompts (simplified)
         system_prompt = get_system_prompt(menu_text)
+
+        pending_notes_item_name = state.pending_notes_item_name
+        pending_notes_examples = None
+        if pending_notes_item_name:
+            try:
+                pending_notes_examples = await self.menu_repository.get_item_options(pending_notes_item_name)
+            except Exception:
+                pending_notes_examples = None
+
         user_prompt = get_user_prompt(
             context, 
             user_input,
             conversation_stage=state.stage,
-            current_order_summary=order_summary
+            current_order_summary=order_summary,
+            pending_notes_item_name=pending_notes_item_name,
+            pending_notes_examples=pending_notes_examples,
         )
         
         # ===== LOGGING: PROMPTS SENT TO LLM =====
@@ -111,51 +113,29 @@ class AgentService:
             logger.info("=" * 80)
             
             user_input_lower = user_input.lower().strip()
-            
-            if current_item_name:
-                # We're in the middle of customizing an item - process modifier response
-                logger.info(f"[AGENT FLOW] Processing modifier response - Current Item: {current_item_name}")
-                flow_response = await flow_manager.process_modifier_response(user_input)
-                agent_response = flow_response
-                # Update state
-                state.current_item_being_discussed = flow_manager.get_current_item_name()
-                logger.info(f"[AGENT FLOW] After modifier processing - State.current_item_being_discussed: {state.current_item_being_discussed or 'NONE'}")
-            else:
-                # Check if LLM extracted an item name
-                extracted_item_name = llm_response.get("action", {}).get("item_name")
-                logger.info(f"[AGENT FLOW] LLM Extracted Item Name: {extracted_item_name or 'NONE'}")
-                
-                if extracted_item_name:
-                    # Customer mentioned an item - start customizing it
-                    logger.info(f"[AGENT FLOW] Starting item customization for: {extracted_item_name}")
-                    flow_response = await flow_manager.process_item_mention(extracted_item_name)
-                    agent_response = flow_response
-                    # Update state
-                    state.current_item_being_discussed = flow_manager.get_current_item_name()
-                    logger.info(f"[AGENT FLOW] After item mention - State.current_item_being_discussed: {state.current_item_being_discussed or 'NONE'}")
-                else:
-                    # No item mentioned, use LLM response as-is
-                    logger.info("[AGENT FLOW] No item extracted, using LLM response as-is")
-                    agent_response = llm_response
-                    # Check for done ordering indicators
-                    done_ordering_indicators = ["that's all", "that's it", "nothing else", "i'm done", "i'm finished", 
-                                              "that's everything", "no that's all", "no thanks that's all"]
-                    is_done_ordering = any(indicator in user_input_lower for indicator in done_ordering_indicators)
-                    
-                    if is_done_ordering and state.stage == ConversationStage.ORDERING:
-                        # Move to review
-                        logger.info("[AGENT FLOW] Detected 'done ordering', moving to REVIEW stage")
-                        state.stage = ConversationStage.REVIEW
-                        agent_response["response"] = "Great! Let me read back your order to make sure I have everything correct."
-                        agent_response["intent"] = "reviewing"
-            
-            # Handle add_item action from flow manager
-            if agent_response.get("action", {}).get("type") == "add_item":
-                logger.info(f"[AGENT ACTION] add_item action detected - Item: {agent_response.get('action', {}).get('item_name')}")
-                # Flow manager handled the item customization, item is ready to add
-                state.current_item_being_discussed = None
-                flow_manager.clear_current_item()
-                logger.info("[AGENT ACTION] Cleared current_item_being_discussed and flow manager item")
+
+            # Use LLM response directly (no structured customization state machine)
+            agent_response = llm_response
+
+            # Check for done ordering indicators (server-side deterministic transition)
+            done_ordering_indicators = [
+                "that's all",
+                "that's it",
+                "nothing else",
+                "i'm done",
+                "i'm finished",
+                "that's everything",
+                "no that's all",
+                "no thanks that's all",
+            ]
+            is_done_ordering = any(indicator in user_input_lower for indicator in done_ordering_indicators)
+
+            if is_done_ordering and state.stage == ConversationStage.ORDERING:
+                logger.info("[AGENT FLOW] Detected 'done ordering', moving to REVIEW stage")
+                state.stage = ConversationStage.REVIEW
+                agent_response["response"] = "Great! Let me read back your order to make sure I have everything correct."
+                agent_response["intent"] = "reviewing"
+                agent_response["action"] = {"type": "none"}
             
             # Add agent response to transcript
             state.add_transcript_turn("Agent", agent_response.get("response", ""))
@@ -171,6 +151,8 @@ class AgentService:
             elif state.stage == ConversationStage.REVIEW:
                 if intent == "concluding" or "yes" in user_input_lower or "correct" in user_input_lower:
                     state.stage = ConversationStage.CONCLUSION
+                    # Let the session manager persist and end the call
+                    agent_response["intent"] = "completing"
             
             if old_stage != state.stage:
                 logger.info(f"[AGENT STAGE] Stage changed: {old_stage.value} -> {state.stage.value}")
@@ -201,18 +183,6 @@ class AgentService:
                 "action": {"type": "none"},
             }
     
-    def _get_flow_manager_for_state(self, state: ConversationState) -> ConversationFlowManager:
-        """Get or create a flow manager for this conversation state.
-        
-        Uses state.call_sid as key to store flow managers per-call.
-        This ensures each call has its own flow manager state.
-        """
-        # Use module-level dict (persists across requests)
-        if state.call_sid not in _flow_managers:
-            _flow_managers[state.call_sid] = ConversationFlowManager(self.menu_repository)
-        
-        return _flow_managers[state.call_sid]
-
     async def get_greeting(self, state: ConversationState) -> str:
         """Get initial greeting message."""
         menu_text = await self.menu_repository.get_menu_text()

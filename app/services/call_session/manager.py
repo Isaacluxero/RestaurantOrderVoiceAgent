@@ -48,10 +48,9 @@ class CallSessionManager:
 
         # Get menu text and requirements for context
         menu_text = await self.menu_repository.get_menu_text()
-        item_requirements_text = await self.menu_repository.get_item_requirements_text()
 
         # Initialize conversation state
-        state = await self.agent_service.initialize_state(call_sid, menu_text, item_requirements_text)
+        state = await self.agent_service.initialize_state(call_sid, menu_text, "")
 
         # Create session
         session = CallSession(
@@ -145,6 +144,53 @@ class CallSessionManager:
                     if errors:
                         response_text += f" {errors[0]}"
                     logger.info("=" * 80)
+
+            # If the customer did NOT provide notes for this item, ask for notes next (with examples)
+            notes_text = ""
+            if isinstance(action.get("notes"), str):
+                notes_text = action.get("notes", "").strip()
+            if not notes_text and order_item:
+                try:
+                    examples = await self.menu_repository.get_item_options(order_item.item_name)
+                except Exception:
+                    examples = []
+
+                session.state.pending_notes_item_name = order_item.item_name
+                session.state.pending_notes_item_index = max(0, len(session.state.current_order) - 1)
+
+                if examples:
+                    sample = ", ".join(examples[:3])
+                    response_text = (
+                        f"Got it. Any notes or customizations for your {order_item.item_name}? "
+                        f"For example: {sample}. If not, just say no."
+                    )
+                else:
+                    response_text = (
+                        f"Got it. Any notes or customizations for your {order_item.item_name}? "
+                        f"If not, just say no."
+                    )
+
+        elif action.get("type") == "add_notes":
+            notes_text = action.get("notes", "")
+            if isinstance(notes_text, str):
+                notes_text = notes_text.strip()
+            else:
+                notes_text = ""
+
+            idx = session.state.pending_notes_item_index
+            if notes_text and idx is not None and 0 <= idx < len(session.state.current_order):
+                item = session.state.current_order[idx]
+                if not item.modifiers:
+                    item.modifiers = [notes_text]
+                else:
+                    item.modifiers.append(notes_text)
+
+            # Clear pending notes state
+            session.state.pending_notes_item_name = None
+            session.state.pending_notes_item_index = None
+
+            # Now continue ordering normally
+            response_text = "Perfect—anything else?"
 
         # Check if order is being confirmed
         if intent == "confirming_order" or intent == "completing":

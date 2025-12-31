@@ -27,6 +27,8 @@ class ConversationState(BaseModel):
     current_item_needs_size: bool = False  # Track if current item needs size specification
     current_item_is_complete: bool = False  # Track if current item discussion is complete
     current_item_customization_stage: str = ""  # "name", "quantity", "modifiers", "size", "complete"
+    pending_notes_item_name: Optional[str] = None  # If set, we're waiting for notes/customizations for this item
+    pending_notes_item_index: Optional[int] = None  # Index into current_order for pending notes item
 
     def add_transcript_turn(self, role: str, text: str) -> None:
         """Add a turn to the transcript."""
@@ -50,7 +52,7 @@ class ConversationState(BaseModel):
             return "No items in order yet."
         lines = []
         for item in self.current_order:
-            mod_str = f" ({', '.join(item.modifiers)})" if item.modifiers else ""
+            mod_str = f" (notes: {', '.join(item.modifiers)})" if item.modifiers else ""
             qty_str = f"{item.quantity}x " if item.quantity > 1 else ""
             lines.append(f"- {qty_str}{item.item_name}{mod_str}")
         return "\n".join(lines)

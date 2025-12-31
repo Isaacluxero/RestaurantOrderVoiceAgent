@@ -33,6 +33,10 @@ class OrderParser:
 
         quantity = action.get("quantity", 1)
         modifiers = action.get("modifiers", [])
+        notes = action.get("notes", "")
+        if not modifiers and isinstance(notes, str) and notes.strip():
+            # Backwards-compatible: store freeform notes as a single "modifier" string
+            modifiers = [notes.strip()]
         if isinstance(modifiers, str):
             modifiers = [modifiers]
 
