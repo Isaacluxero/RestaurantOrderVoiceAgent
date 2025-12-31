@@ -17,6 +17,10 @@ from app.services.agent.state import OrderItem as StateOrderItem
 
 logger = logging.getLogger(__name__)
 
+# Module-level session storage (persists across requests)
+# In production, use Redis or similar
+_sessions: Dict[str, CallSession] = {}
+
 
 class CallSessionManager:
     """Manages call sessions and orchestrates the conversation flow."""
@@ -37,10 +41,6 @@ class CallSessionManager:
         self.call_persistence = CallPersistenceService(db)
         self.order_persistence = OrderPersistenceService(db)
 
-        # In-memory session storage (for MVP)
-        # In production, use Redis or similar
-        self.sessions: Dict[str, CallSession] = {}
-
     async def create_session(self, call_sid: str) -> CallSession:
         """Create a new call session."""
         # Create call record in database
@@ -60,14 +60,14 @@ class CallSessionManager:
             call_id=call_record.id,
         )
 
-        # Store session
-        self.sessions[call_sid] = session
+        # Store session in module-level dict
+        _sessions[call_sid] = session
 
         return session
 
     async def get_session(self, call_sid: str) -> Optional[CallSession]:
         """Get an existing call session."""
-        return self.sessions.get(call_sid)
+        return _sessions.get(call_sid)
 
     async def get_greeting(self, call_sid: str) -> str:
         """Get greeting message for a call."""
@@ -259,6 +259,6 @@ class CallSessionManager:
                 )
 
         # Remove from memory
-        if call_sid in self.sessions:
-            del self.sessions[call_sid]
+        if call_sid in _sessions:
+            del _sessions[call_sid]
 
