@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.call_session.models import CallSession
 from app.services.agent.state import ConversationState
+from app.services.agent.stages import ConversationStage
 from app.services.agent.agent import AgentService
 from app.services.speech.stt import SpeechToTextService
 from app.services.speech.tts import TextToSpeechService
