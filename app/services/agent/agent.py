@@ -12,6 +12,9 @@ from app.services.menu.repository import MenuRepository
 
 logger = logging.getLogger(__name__)
 
+# Module-level flow manager storage (persists across requests)
+_flow_managers: Dict[str, ConversationFlowManager] = {}
+
 
 class AgentService:
     """Service for LLM-powered conversation agent."""
@@ -19,7 +22,6 @@ class AgentService:
     def __init__(self, menu_repository: MenuRepository):
         self.client = AsyncOpenAI(api_key=settings.openai_api_key)
         self.menu_repository = menu_repository
-        # Flow manager is created per-call via get_flow_manager() method
 
     async def initialize_state(
         self, call_sid: str, menu_text: str, item_requirements_text: str = ""
@@ -205,15 +207,11 @@ class AgentService:
         Uses state.call_sid as key to store flow managers per-call.
         This ensures each call has its own flow manager state.
         """
-        # Store flow managers in a dict keyed by call_sid
-        # This is thread-safe for our use case (each call gets its own state object)
-        if not hasattr(self, '_flow_managers'):
-            self._flow_managers = {}
+        # Use module-level dict (persists across requests)
+        if state.call_sid not in _flow_managers:
+            _flow_managers[state.call_sid] = ConversationFlowManager(self.menu_repository)
         
-        if state.call_sid not in self._flow_managers:
-            self._flow_managers[state.call_sid] = ConversationFlowManager(self.menu_repository)
-        
-        return self._flow_managers[state.call_sid]
+        return _flow_managers[state.call_sid]
 
     async def get_greeting(self, state: ConversationState) -> str:
         """Get initial greeting message."""
