@@ -1,6 +1,6 @@
 """Call session manager."""
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.call_session.models import CallSession
