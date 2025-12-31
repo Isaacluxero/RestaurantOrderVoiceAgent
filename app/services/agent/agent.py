@@ -143,16 +143,37 @@ class AgentService:
             # Update stage based on intent
             old_stage = state.stage
             intent = agent_response.get("intent", "")
+            
+            # Check for revision indicators (only in REVIEW stage)
+            revision_indicators = [
+                "change", "remove", "delete", "don't want", "cancel", 
+                "take out", "add", "actually", "wait", "hold on", "no wait"
+            ]
+            wants_revision = any(indicator in user_input_lower for indicator in revision_indicators)
+            
+            # Check for confirmation indicators
+            confirmation_indicators = ["yes", "correct", "that's right", "sounds good", "perfect", "that works", "looks good"]
+            is_confirming = any(indicator in user_input_lower for indicator in confirmation_indicators)
+            
             if state.stage == ConversationStage.GREETING:
                 state.stage = ConversationStage.ORDERING
             elif state.stage == ConversationStage.ORDERING:
                 if intent == "reviewing" or "that's all" in user_input_lower or "that's it" in user_input_lower:
                     state.stage = ConversationStage.REVIEW
             elif state.stage == ConversationStage.REVIEW:
-                if intent == "concluding" or "yes" in user_input_lower or "correct" in user_input_lower:
+                # Priority: Check for confirmation FIRST (go to CONCLUSION)
+                if intent == "concluding" or is_confirming:
                     state.stage = ConversationStage.CONCLUSION
-                    # Let the session manager persist and end the call
                     agent_response["intent"] = "completing"
+                # Then check for revision requests (go to REVISION)
+                elif intent == "revising" or wants_revision:
+                    state.stage = ConversationStage.REVISION
+                    agent_response["intent"] = "revising"
+            elif state.stage == ConversationStage.REVISION:
+                if intent == "reviewing" or "that's all" in user_input_lower or "done" in user_input_lower or "that's it" in user_input_lower:
+                    state.stage = ConversationStage.REVIEW
+                    agent_response["response"] = "Got it! Let me read back your updated order."
+                    agent_response["intent"] = "reviewing"
             
             if old_stage != state.stage:
                 logger.info(f"[AGENT STAGE] Stage changed: {old_stage.value} -> {state.stage.value}")

@@ -8,6 +8,7 @@ class ConversationStage(str, Enum):
     GREETING = "greeting"  # Initial greeting when call starts
     ORDERING = "ordering"  # Taking orders from customer
     REVIEW = "review"  # Reviewing the entire order before finalizing
+    REVISION = "revision"  # Making changes to the order (add/remove/modify items)
     CONCLUSION = "conclusion"  # Finalizing order and saying goodbye
     
     def __str__(self) -> str:

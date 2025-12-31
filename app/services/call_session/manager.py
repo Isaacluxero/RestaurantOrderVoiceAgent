@@ -192,6 +192,43 @@ class CallSessionManager:
             # Now continue ordering normally
             response_text = "Perfect—anything else?"
 
+        elif action.get("type") == "remove_item":
+            item_name = action.get("item_name", "").strip().lower()
+            if item_name:
+                # Find and remove the item from the order
+                original_count = len(session.state.current_order)
+                session.state.current_order = [
+                    item for item in session.state.current_order 
+                    if item.item_name.lower() != item_name
+                ]
+                removed_count = original_count - len(session.state.current_order)
+                if removed_count > 0:
+                    logger.info(f"[SESSION MANAGER] Removed item: {item_name}")
+                    response_text = f"Removed {item_name} from your order. Anything else you'd like to change?"
+                else:
+                    logger.warning(f"[SESSION MANAGER] Tried to remove item '{item_name}' but it wasn't found in order")
+                    response_text = f"I don't see {item_name} in your order. What else would you like to change?"
+
+        elif action.get("type") == "modify_item":
+            item_name = action.get("item_name", "").strip().lower()
+            notes_text = action.get("notes", "").strip()
+            if item_name:
+                # Find the item and update its notes
+                found = False
+                for item in session.state.current_order:
+                    if item.item_name.lower() == item_name:
+                        if notes_text:
+                            item.modifiers = [notes_text]
+                        else:
+                            item.modifiers = []
+                        logger.info(f"[SESSION MANAGER] Modified item: {item_name} with notes: {notes_text}")
+                        response_text = f"Updated {item_name}. Anything else you'd like to change?"
+                        found = True
+                        break
+                if not found:
+                    logger.warning(f"[SESSION MANAGER] Tried to modify item '{item_name}' but it wasn't found in order")
+                    response_text = f"I don't see {item_name} in your order. What else would you like to change?"
+
         # Check if order is being confirmed
         if intent == "confirming_order" or intent == "completing":
             # Persist order
@@ -205,8 +242,18 @@ class CallSessionManager:
                 response_text = f"Perfect! Your order: {order_summary}. Thank you for calling {settings.restaurant_name}!"
                 session.state.stage = ConversationStage.CONCLUSION
 
-        # Generate TwiML response
+        # Handle REVIEW stage: read back order on first entry (server-side)
         from app.services.agent.stages import ConversationStage
+        if session.state.stage == ConversationStage.REVIEW:
+            # Check if this is the first time entering REVIEW (order not yet read back in recent transcript)
+            recent_transcript = session.state.get_transcript_text()[-300:].lower()
+            if "read back" not in recent_transcript and "here's your order" not in recent_transcript and "order:" not in recent_transcript:
+                # First time in REVIEW - read back the order
+                order_summary = session.state.get_order_summary()
+                response_text = f"Perfect! Here's your order: {order_summary}. Does that look correct?"
+                logger.info(f"[SESSION MANAGER] First entry into REVIEW stage - reading back order")
+        
+        # Generate TwiML response
         if session.state.stage == ConversationStage.CONCLUSION:
             # End call
             return f"""<?xml version="1.0" encoding="UTF-8"?>
