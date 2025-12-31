@@ -1,6 +1,6 @@
 """Conversation state management."""
 from typing import List, Dict, Any, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.services.agent.stages import ConversationStage
 
 
@@ -9,21 +9,21 @@ class OrderItem(BaseModel):
 
     item_name: str
     quantity: int = 1
-    modifiers: List[str] = []
+    modifiers: List[str] = Field(default_factory=list)
 
 
 class ConversationState(BaseModel):
     """Conversation state for the agent."""
 
     call_sid: str
-    transcript: List[str] = []  # List of conversation turns
-    current_order: List[OrderItem] = []  # Items currently in the order
-    pending_clarifications: List[str] = []  # Questions waiting for answers
+    transcript: List[str] = Field(default_factory=list)  # List of conversation turns
+    current_order: List[OrderItem] = Field(default_factory=list)  # Items currently in the order
+    pending_clarifications: List[str] = Field(default_factory=list)  # Questions waiting for answers
     stage: ConversationStage = ConversationStage.GREETING  # Current conversation stage
     menu_context: Optional[str] = None  # Menu text for LLM context
     current_item_being_discussed: Optional[str] = None  # Track which item is currently being customized
     current_item_quantity: int = 1  # Quantity for current item
-    current_item_modifiers: List[str] = []  # Modifiers for current item
+    current_item_modifiers: List[str] = Field(default_factory=list)  # Modifiers for current item
     current_item_needs_size: bool = False  # Track if current item needs size specification
     current_item_is_complete: bool = False  # Track if current item discussion is complete
     current_item_customization_stage: str = ""  # "name", "quantity", "modifiers", "size", "complete"
