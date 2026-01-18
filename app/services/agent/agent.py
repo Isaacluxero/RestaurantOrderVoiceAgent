@@ -141,7 +141,8 @@ class AgentService:
                     logger.info("[AGENT FLOW] Detected 'done ordering', moving to REVIEW stage")
                     state.stage = ConversationStage.REVIEW
                     state.order_read_back = False  # Reset flag for new REVIEW entry
-                    agent_response["response"] = "Great! Let me read back your order to make sure I have everything correct."
+                    # Clear response - manager will read back the order
+                    agent_response["response"] = ""
                     agent_response["intent"] = "reviewing"
                     agent_response["action"] = {"type": "none"}
             
@@ -168,6 +169,10 @@ class AgentService:
             elif state.stage == ConversationStage.ORDERING:
                 if intent == "reviewing" or "that's all" in user_input_lower or "that's it" in user_input_lower:
                     state.stage = ConversationStage.REVIEW
+                    state.order_read_back = False  # Reset flag so manager can read back the order
+                    # Clear response - manager will read back the order
+                    if not agent_response.get("response"):
+                        agent_response["response"] = ""
             elif state.stage == ConversationStage.REVIEW:
                 # Validate order is not empty before allowing conclusion
                 if not state.has_items():
@@ -179,6 +184,8 @@ class AgentService:
                 elif intent == "concluding" or is_confirming:
                     state.stage = ConversationStage.CONCLUSION
                     agent_response["intent"] = "completing"
+                    # Clear response - manager will set the conclusion message
+                    agent_response["response"] = ""
                 # Then check for revision requests (go to REVISION)
                 elif intent == "revising" or wants_revision:
                     state.stage = ConversationStage.REVISION
@@ -186,7 +193,9 @@ class AgentService:
             elif state.stage == ConversationStage.REVISION:
                 if intent == "reviewing" or "that's all" in user_input_lower or "done" in user_input_lower or "that's it" in user_input_lower:
                     state.stage = ConversationStage.REVIEW
-                    agent_response["response"] = "Got it! Let me read back your updated order."
+                    state.order_read_back = False  # Reset flag so order gets read back again
+                    # Clear response - manager will read back the order
+                    agent_response["response"] = ""
                     agent_response["intent"] = "reviewing"
             
             if old_stage != state.stage:
