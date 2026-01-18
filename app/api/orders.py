@@ -1,6 +1,6 @@
 """Order history API endpoints."""
 import logging
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
@@ -20,7 +20,7 @@ class OrderItemResponse(BaseModel):
     id: int
     item_name: str
     quantity: int
-    modifiers: list[str] | None = None
+    modifiers: Optional[List[str]] = None
 
     class Config:
         from_attributes = True
@@ -30,8 +30,8 @@ class OrderResponse(BaseModel):
     """Order response model."""
     id: int
     status: str
-    raw_text: str | None = None
-    structured_order: dict | None = None
+    raw_text: Optional[str] = None
+    structured_order: Optional[dict] = None
     created_at: str
     items: List[OrderItemResponse] = []
 
@@ -44,9 +44,9 @@ class CallResponse(BaseModel):
     id: int
     call_sid: str
     started_at: str
-    ended_at: str | None = None
+    ended_at: Optional[str] = None
     status: str
-    transcript: str | None = None
+    transcript: Optional[str] = None
     orders: List[OrderResponse] = []
 
     class Config:
