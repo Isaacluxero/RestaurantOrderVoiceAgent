@@ -154,8 +154,25 @@ class CallSessionManager:
         from app.services.agent.stages import ConversationStage
         if session.state.stage == ConversationStage.REVIEW and not session.state.order_read_back:
             # First time in REVIEW - read back the order
-            order_summary = session.state.get_order_summary()
-            response_text = f"Perfect! Here's your order: {order_summary}. Does that look correct?"
+            # Format order summary for TTS (no newlines, natural speech)
+            order_items = session.state.current_order
+            if not order_items:
+                order_summary_tts = "No items in order yet."
+            else:
+                item_parts = []
+                for item in order_items:
+                    qty_str = f"{item.quantity} " if item.quantity > 1 else ""
+                    mod_str = f" with {', '.join(item.modifiers)}" if item.modifiers else ""
+                    item_parts.append(f"{qty_str}{item.item_name}{mod_str}")
+                # Join with "and" for natural speech
+                if len(item_parts) == 1:
+                    order_summary_tts = item_parts[0]
+                elif len(item_parts) == 2:
+                    order_summary_tts = f"{item_parts[0]} and {item_parts[1]}"
+                else:
+                    order_summary_tts = ", ".join(item_parts[:-1]) + f", and {item_parts[-1]}"
+            
+            response_text = f"Perfect! Here's your order: {order_summary_tts}. Does that look correct?"
             session.state.order_read_back = True  # Mark as read back
             logger.info(f"[SESSION MANAGER] First entry into REVIEW stage - reading back order")
         
