@@ -147,7 +147,7 @@ class CallSessionManager:
                 # End call - order was already read back in REVIEW stage
                 from app.services.agent.stages import ConversationStage
                 from app.core.config import settings
-                response_text = f"Perfect! Thank you for calling {settings.restaurant_name}!"
+                response_text = f"Perfect! Thank you for calling {settings.restaurant_name}! Your order will be ready in 30 minutes."
                 session.state.stage = ConversationStage.CONCLUSION
 
         # Handle REVIEW stage: read back order on first entry (server-side)
