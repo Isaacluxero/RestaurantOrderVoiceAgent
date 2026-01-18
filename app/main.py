@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 import os
 
 from app.core.logging import setup_logging
-from app.db.database import init_db
+from app.db.database import init_db, reset_db
 from app.api import health, webhooks, orders, menu
 
 
@@ -16,6 +16,8 @@ async def lifespan(app: FastAPI):
     # Startup
     setup_logging()
     await init_db()
+    # Reset database on every startup/deployment (removes all data)
+    await reset_db()
     yield
     # Shutdown
     pass
