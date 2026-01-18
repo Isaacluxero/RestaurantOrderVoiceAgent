@@ -225,30 +225,11 @@ class AgentService:
         if not state.menu_context:
             state.menu_context = menu_text
 
-        system_prompt = get_system_prompt(menu_text)
-        user_prompt = """The customer just called. Give them a warm, friendly, and enthusiastic greeting. 
-Be personable and welcoming. Ask how you can help them today with a warm tone. 
-Make them feel valued and welcomed to the restaurant. Keep it brief (1-2 sentences) but friendly."""
+        # Hardcoded short greeting
+        greeting = f"Hi! Thanks for calling {settings.restaurant_name}. What can I get for you today?"
 
-        try:
-            response = await self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.7,
-                response_format={"type": "json_object"},
-            )
+        state.add_transcript_turn("Agent", greeting)
+        # Stage will transition to ORDERING after first user input
 
-            content = response.choices[0].message.content
-            agent_response = json.loads(content)
-            greeting = agent_response.get("response", f"Hello! Welcome to {settings.restaurant_name}. How can I help you today?")
-
-            state.add_transcript_turn("Agent", greeting)
-            # Stage will transition to ORDERING after first user input
-
-            return greeting
-        except Exception:
-            return f"Hello! Welcome to {settings.restaurant_name}. How can I help you today?"
+        return greeting
 

@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     database_url: str
 
     # Restaurant
-    restaurant_name: str = "Restaurant"
+    restaurant_name: str = "Mama Marias"
 
     # Server
     host: str = "0.0.0.0"
