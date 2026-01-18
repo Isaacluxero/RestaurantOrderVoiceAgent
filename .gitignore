@@ -42,6 +42,9 @@ ENV/
 *.sqlite
 *.sqlite3
 
+# Frontend build output
+app/static/
+
 # Logs
 *.log
 logs/
