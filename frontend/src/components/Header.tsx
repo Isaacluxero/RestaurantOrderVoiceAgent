@@ -1,6 +1,6 @@
 import './Header.css'
 
-type Tab = 'orders' | 'menu'
+type Tab = 'metrics' | 'orders' | 'menu'
 
 interface HeaderProps {
   activeTab: Tab;
@@ -18,6 +18,12 @@ function Header({ activeTab, onTabChange, onRefresh }: HeaderProps) {
         </div>
         <div className="header-actions">
           <div className="tabs">
+            <button
+              className={`tab-button ${activeTab === 'metrics' ? 'active' : ''}`}
+              onClick={() => onTabChange('metrics')}
+            >
+              Metrics
+            </button>
             <button
               className={`tab-button ${activeTab === 'orders' ? 'active' : ''}`}
               onClick={() => onTabChange('orders')}

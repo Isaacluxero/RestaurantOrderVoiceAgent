@@ -4,11 +4,12 @@ import { Call, Menu } from './types'
 import CallCard from './components/CallCard'
 import Header from './components/Header'
 import MenuView from './components/MenuView'
+import MetricsView from './components/MetricsView'
 
-type Tab = 'orders' | 'menu'
+type Tab = 'metrics' | 'orders' | 'menu'
 
 function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('orders')
+  const [activeTab, setActiveTab] = useState<Tab>('metrics')
   const [calls, setCalls] = useState<Call[]>([])
   const [menu, setMenu] = useState<Menu | null>(null)
   const [loading, setLoading] = useState(true)
@@ -56,9 +57,11 @@ function App() {
   }, [])
 
   const handleRefresh = () => {
-    if (activeTab === 'orders') {
+    if (activeTab === 'orders' || activeTab === 'metrics') {
       fetchOrderHistory()
-    } else {
+    }
+    if (activeTab === 'menu' || activeTab === 'metrics') {
+      // Metrics needs menu for revenue calculation
       fetchMenu()
     }
   }
@@ -89,6 +92,9 @@ function App() {
               <CallCard key={call.id} call={call} />
             ))}
           </div>
+        )}
+        {!loading && !error && activeTab === 'metrics' && (
+          <MetricsView calls={calls} menu={menu} />
         )}
         {!loading && !error && activeTab === 'menu' && menu && (
           <MenuView menu={menu} />
