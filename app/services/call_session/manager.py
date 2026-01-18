@@ -266,15 +266,57 @@ class CallSessionManager:
                     )
 
                     if examples:
-                        # Format examples naturally: "pickles, onions, and cheese" or "pickles and onions"
-                        sample_list = examples[:3]
-                        if len(sample_list) == 1:
-                            sample_text = sample_list[0]
-                        elif len(sample_list) == 2:
-                            sample_text = f"{sample_list[0]} and {sample_list[1]}"
+                        # Check if these are size options (fries, drinks, etc.)
+                        size_options = ["small", "medium", "large"]
+                        examples_lower = [opt.lower() for opt in examples]
+                        has_sizes = any(size in examples_lower for size in size_options)
+                        
+                        if has_sizes:
+                            # Format size options: "in small, medium, or large"
+                            # Sort sizes: small, medium, large
+                            size_order = ["small", "medium", "large"]
+                            size_list = [opt for opt in size_order if opt in examples_lower]
+                            
+                            if len(size_list) == 2:
+                                sample_text = f"{size_list[0]} or {size_list[1]}"
+                            elif len(size_list) == 3:
+                                sample_text = f"{size_list[0]}, {size_list[1]}, or {size_list[2]}"
+                            else:
+                                sample_text = " or ".join(size_list) if size_list else " or ".join([opt for opt in examples if opt.lower() in size_options])
+                            response_text = f"Ok, would you like them in {sample_text}?"
                         else:
-                            sample_text = ", ".join(sample_list[:-1]) + f", and {sample_list[-1]}"
-                        response_text = f"Ok, would you like {sample_text} with that?"
+                            # For burgers: extract positive components (remove "no", "extra", etc.)
+                            # Convert "no onions" -> "onions", "extra cheese" -> "cheese"
+                            positive_components = []
+                            for opt in examples:
+                                opt_lower = opt.lower()
+                                # Remove "no ", "extra ", "double " prefixes
+                                clean_opt = opt_lower.replace("no ", "").replace("extra ", "").replace("double ", "").strip()
+                                # Skip if it's just a patty mention (not a typical topping)
+                                # Keep only common toppings: onions, pickles, lettuce, cheese, tomato
+                                if clean_opt not in positive_components and clean_opt not in ["patty"]:
+                                    positive_components.append(clean_opt)
+                            
+                            if positive_components:
+                                # Limit to first 3 most common toppings
+                                positive_components = positive_components[:3]
+                                if len(positive_components) == 1:
+                                    sample_text = positive_components[0]
+                                elif len(positive_components) == 2:
+                                    sample_text = f"{positive_components[0]} and {positive_components[1]}"
+                                else:
+                                    sample_text = ", ".join(positive_components[:-1]) + f", and {positive_components[-1]}"
+                                response_text = f"Ok, would you like it with {sample_text}?"
+                            else:
+                                # Fallback to original format if we can't extract positive components
+                                sample_list = examples[:3]
+                                if len(sample_list) == 1:
+                                    sample_text = sample_list[0]
+                                elif len(sample_list) == 2:
+                                    sample_text = f"{sample_list[0]} and {sample_list[1]}"
+                                else:
+                                    sample_text = ", ".join(sample_list[:-1]) + f", and {sample_list[-1]}"
+                                response_text = f"Ok, would you like {sample_text} with that?"
                     else:
                         response_text = (
                             f"Got it. Any customizations for your {order_item.item_name}? "
