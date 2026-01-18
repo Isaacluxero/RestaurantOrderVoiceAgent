@@ -144,11 +144,10 @@ class CallSessionManager:
             await self._persist_order(session)
 
             if intent == "completing":
-                # Read back order and end call
+                # End call - order was already read back in REVIEW stage
                 from app.services.agent.stages import ConversationStage
-                order_summary = session.state.get_order_summary()
                 from app.core.config import settings
-                response_text = f"Perfect! Your order: {order_summary}. Thank you for calling {settings.restaurant_name}!"
+                response_text = f"Perfect! Thank you for calling {settings.restaurant_name}!"
                 session.state.stage = ConversationStage.CONCLUSION
 
         # Handle REVIEW stage: read back order on first entry (server-side)
@@ -267,14 +266,18 @@ class CallSessionManager:
                     )
 
                     if examples:
-                        sample = ", ".join(examples[:3])
-                        response_text = (
-                            f"Got it. Any notes or customizations for your {order_item.item_name}? "
-                            f"For example: {sample}. If not, just say no."
-                        )
+                        # Format examples naturally: "pickles, onions, and cheese" or "pickles and onions"
+                        sample_list = examples[:3]
+                        if len(sample_list) == 1:
+                            sample_text = sample_list[0]
+                        elif len(sample_list) == 2:
+                            sample_text = f"{sample_list[0]} and {sample_list[1]}"
+                        else:
+                            sample_text = ", ".join(sample_list[:-1]) + f", and {sample_list[-1]}"
+                        response_text = f"Ok, would you like {sample_text} with that?"
                     else:
                         response_text = (
-                            f"Got it. Any notes or customizations for your {order_item.item_name}? "
+                            f"Got it. Any customizations for your {order_item.item_name}? "
                             f"If not, just say no."
                         )
             else:
@@ -301,10 +304,14 @@ class CallSessionManager:
         else:
             notes_text = ""
 
-        # Check if customer said "no" or "none"
+        # Check if customer said "no" or "none" (standalone, not as part of "no pickles")
         user_input_lower = speech_result.lower().strip() if speech_result else ""
-        is_no_response = any(
-            word in user_input_lower for word in NO_RESPONSE_INDICATORS
+        # Only treat as "no response" if the entire response is just "no" or similar (no other words)
+        user_words = user_input_lower.split()
+        is_no_response = (
+            len(user_words) <= 2 and  # "no" or "no thanks" or "none" etc.
+            any(word in user_words for word in NO_RESPONSE_INDICATORS) and
+            not notes_text  # Also check that LLM didn't extract actual notes
         )
 
         idx = session.state.pending_notes_item_index

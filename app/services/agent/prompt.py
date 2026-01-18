@@ -102,7 +102,8 @@ IMPORTANT: Do NOT go back to GREETING stage once you've moved to ORDERING. Stay 
             f"{examples} "
             f"The customer's response should be interpreted as notes for that item. "
             f"Set action.type=\"add_notes\" (NOT \"add_item\") and put their response in action.notes. "
-            f"If they say 'no' or 'none', set action.notes to empty string."
+            f"Capture EXACTLY what they say (e.g., 'no pickles, no onions', 'extra cheese', 'no lettuce'). "
+            f"Only set action.notes to empty string if they say JUST 'no' or 'none' with no other details."
         )
     
     return f"""Conversation so far:
