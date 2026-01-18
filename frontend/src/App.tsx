@@ -15,7 +15,7 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchOrderHistory = async () => {
+  const fetchOrderHistory = async (suppressError = false) => {
     try {
       setError(null)
       const response = await fetch('/api/orders/history')
@@ -25,11 +25,17 @@ function App() {
       const data = await response.json()
       setCalls(data)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      // For metrics view, use empty array instead of showing error
+      // This allows metrics to display with zero values
+      if (suppressError) {
+        setCalls([])
+      } else {
+        setError(err instanceof Error ? err.message : 'An error occurred')
+      }
     }
   }
 
-  const fetchMenu = async () => {
+  const fetchMenu = async (suppressError = false) => {
     try {
       setError(null)
       const response = await fetch('/api/menu')
@@ -39,30 +45,43 @@ function App() {
       const data = await response.json()
       setMenu(data)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      // For metrics view, allow it to work without menu (revenue will be 0)
+      // Only show error for menu tab
+      if (suppressError) {
+        setMenu(null)
+      } else {
+        setError(err instanceof Error ? err.message : 'An error occurred')
+      }
     }
   }
 
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)
-      await Promise.all([fetchOrderHistory(), fetchMenu()])
+      // Always suppress errors on initial load - metrics can handle empty data
+      await Promise.all([
+        fetchOrderHistory(true), 
+        fetchMenu(true)
+      ])
       setLoading(false)
     }
     loadData()
     
-    // Refresh orders every 30 seconds
-    const interval = setInterval(fetchOrderHistory, 30000)
+    // Refresh orders every 30 seconds - suppress errors for metrics
+    const interval = setInterval(() => {
+      fetchOrderHistory(activeTab === 'metrics')
+    }, 30000)
     return () => clearInterval(interval)
-  }, [])
+  }, [activeTab])
 
   const handleRefresh = () => {
+    const isMetrics = activeTab === 'metrics'
     if (activeTab === 'orders' || activeTab === 'metrics') {
-      fetchOrderHistory()
+      fetchOrderHistory(isMetrics)
     }
     if (activeTab === 'menu' || activeTab === 'metrics') {
       // Metrics needs menu for revenue calculation
-      fetchMenu()
+      fetchMenu(isMetrics)
     }
   }
 
@@ -93,7 +112,7 @@ function App() {
             ))}
           </div>
         )}
-        {!loading && !error && activeTab === 'metrics' && (
+        {!loading && activeTab === 'metrics' && (
           <MetricsView calls={calls} menu={menu} />
         )}
         {!loading && !error && activeTab === 'menu' && menu && (

@@ -256,6 +256,20 @@
   margin: 0;
 }
 
+.metrics-empty-section {
+  padding: 2rem;
+  text-align: center;
+  color: #888;
+  font-style: italic;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.metrics-empty-section p {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
 @media (max-width: 768px) {
   .metrics-cards {
     grid-template-columns: 1fr;

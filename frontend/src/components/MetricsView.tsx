@@ -190,9 +190,9 @@ function MetricsView({ calls, menu }: MetricsViewProps) {
       </div>
 
       {/* Top Menu Items */}
-      {metrics.popularItems.length > 0 && (
-        <div className="metrics-section">
-          <h2 className="section-title">Top Menu Items</h2>
+      <div className="metrics-section">
+        <h2 className="section-title">Top Menu Items</h2>
+        {metrics.popularItems.length > 0 ? (
           <div className="popular-items">
             {metrics.popularItems.map((item, idx) => (
               <div key={item.name} className="popular-item">
@@ -213,13 +213,17 @@ function MetricsView({ calls, menu }: MetricsViewProps) {
               </div>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="metrics-empty-section">
+            <p>No items ordered yet. Popular items will appear here once orders are placed.</p>
+          </div>
+        )}
+      </div>
 
       {/* Items by Category */}
-      {Object.keys(metrics.itemsByCategory).length > 0 && (
-        <div className="metrics-section">
-          <h2 className="section-title">Items by Category</h2>
+      <div className="metrics-section">
+        <h2 className="section-title">Items by Category</h2>
+        {Object.keys(metrics.itemsByCategory).length > 0 ? (
           <div className="category-stats">
             {Object.entries(metrics.itemsByCategory)
               .sort(([, a], [, b]) => b - a)
@@ -230,13 +234,17 @@ function MetricsView({ calls, menu }: MetricsViewProps) {
                 </div>
               ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="metrics-empty-section">
+            <p>No items ordered by category yet.</p>
+          </div>
+        )}
+      </div>
 
       {/* Recent Activity */}
-      {metrics.recentActivity.length > 0 && (
-        <div className="metrics-section">
-          <h2 className="section-title">Recent Activity</h2>
+      <div className="metrics-section">
+        <h2 className="section-title">Recent Activity</h2>
+        {metrics.recentActivity.length > 0 ? (
           <div className="recent-activity">
             {metrics.recentActivity.map((call) => {
               const duration = call.ended_at
@@ -269,14 +277,12 @@ function MetricsView({ calls, menu }: MetricsViewProps) {
               )
             })}
           </div>
-        </div>
-      )}
-
-      {calls.length === 0 && (
-        <div className="metrics-empty">
-          <p>No data available yet. Metrics will appear after calls are received.</p>
-        </div>
-      )}
+        ) : (
+          <div className="metrics-empty-section">
+            <p>No recent activity. Call logs will appear here once calls are received.</p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
