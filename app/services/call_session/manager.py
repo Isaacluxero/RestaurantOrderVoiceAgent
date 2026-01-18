@@ -178,10 +178,18 @@ class CallSessionManager:
         
         # Generate TwiML response
         if session.state.stage == ConversationStage.CONCLUSION:
-            # End call
+            # End call - escape XML and use consistent voice
+            escaped_text = (
+                response_text.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace('"', "&quot;")
+                .replace("'", "&apos;")
+            )
             return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="alice">{response_text}</Say>
+    <Say voice="Polly.Joanna-Neural">{escaped_text}</Say>
+    <Pause length="1"/>
     <Hangup/>
 </Response>"""
         else:
