@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI-powered voice agent that handles inbound restaurant phone calls via Twilio, takes orders using OpenAI LLM, and persists them to a database. Includes a React + TypeScript dashboard for viewing order history.
+AI-powered voice agent that handles inbound restaurant phone calls via Twilio, takes orders using OpenAI LLM, and persists them to a database. Includes a password-protected React + TypeScript dashboard for viewing order history, metrics, and managing the menu.
 
 ## Essential Commands
 
@@ -130,8 +130,30 @@ For production multi-restaurant or distributed systems, migrate to Redis or simi
 Built with Vite + React + TypeScript:
 - Source: `frontend/src/`
 - Build output: `app/static/` (served by FastAPI)
+- **Password-protected**: All dashboard routes require authentication
+- **Three main tabs**: Metrics, Order History, Menu Editor
 - Auto-refreshes order history every 30 seconds
-- API endpoint: `GET /api/orders/history`
+- Session-based authentication with HTTP-only cookies
+
+### Authentication System
+
+**Backend** (`app/api/auth.py`):
+- Session-based auth with in-memory session storage (use Redis in production)
+- Sessions expire after 24 hours
+- HTTP-only cookies for security
+- `require_auth()` dependency protects dashboard and API routes
+
+**Protected Routes**:
+- Dashboard (`/`) - Requires login
+- All `/api/orders/*` endpoints
+- All `/api/menu/*` endpoints (except GET for agent access)
+
+**Unprotected Routes**:
+- `/api/auth/login`, `/api/auth/logout`, `/api/auth/session`
+- `/health` - Health check
+- `/webhooks/*` - Twilio webhooks (must be publicly accessible)
+
+**Session Storage**: Module-level `_sessions` dict in `app/api/auth.py`. For production with multiple instances, migrate to Redis.
 
 ## Configuration
 
@@ -143,9 +165,26 @@ Required in `.env`:
 - `DATABASE_URL` - PostgreSQL or SQLite
 - `RESTAURANT_NAME` - Used in agent greeting
 
+**Authentication** (optional, defaults provided):
+- `DASHBOARD_PASSWORD` - Password for dashboard access (default: `admin123`)
+- `SESSION_SECRET_KEY` - Secret key for session signing (default: insecure, change for production)
+
+**Example .env**:
+```env
+DASHBOARD_PASSWORD=my-secure-password
+SESSION_SECRET_KEY=$(openssl rand -hex 32)  # Generate random secret
+```
+
 ### Menu Configuration
 
-Edit `app/services/menu/data/menu.yaml`:
+**Two ways to manage the menu:**
+
+1. **UI Editor (Recommended)**: Login to dashboard → Menu tab → Add/Edit/Delete items
+   - Changes persist immediately to `menu.yaml`
+   - No server restart needed
+   - Categories auto-update based on items
+
+2. **Manual YAML editing**: Edit `app/services/menu/data/menu.yaml`:
 ```yaml
 items:
   - name: cheeseburger
@@ -157,7 +196,13 @@ items:
       - extra cheese
 ```
 
-To use database-backed menus: implement `MenuProvider` interface in `app/services/menu/base.py`.
+**Menu Management API** (`app/api/menu.py`):
+- `POST /api/menu/items` - Create new item
+- `PUT /api/menu/items/{item_name}` - Update item
+- `DELETE /api/menu/items/{item_name}` - Delete item
+- All operations save to YAML immediately via `InMemoryMenuProvider._save_menu()`
+
+**Custom Menu Provider**: Implement `MenuProvider` interface in `app/services/menu/base.py` for database-backed menus.
 
 ### Agent Behavior Customization
 
@@ -166,13 +211,23 @@ Adjust LLM parameters (temperature, model): `app/services/agent/agent.py`
 
 ## API Endpoints
 
-- `GET /` - Frontend dashboard
+### Public Endpoints
 - `GET /health` - Health check
-- `GET /api/orders/history` - JSON API for order history
-- `GET /api/menu` - Current menu data
+- `POST /api/auth/login` - Login with password
+- `POST /api/auth/logout` - Logout and clear session
+- `GET /api/auth/session` - Check current session status
 - `POST /webhooks/voice/incoming` - Twilio incoming call webhook
 - `POST /webhooks/voice/gather` - Twilio speech input webhook
 - `POST /webhooks/voice/status` - Twilio call status webhook
+
+### Protected Endpoints (Require Authentication)
+- `GET /` - Frontend dashboard
+- `GET /login` - Login page (redirects if already authenticated)
+- `GET /api/orders/history` - JSON API for order history
+- `GET /api/menu` - Current menu data
+- `POST /api/menu/items` - Create menu item
+- `PUT /api/menu/items/{item_name}` - Update menu item
+- `DELETE /api/menu/items/{item_name}` - Delete menu item
 
 ## Deployment Notes
 
@@ -195,16 +250,53 @@ Or add to Railway build command in `railway.json`.
 
 ## Important Implementation Details
 
-1. **In-memory sessions**: Not suitable for production load balancing. Migrate to Redis for distributed deployments.
+1. **Authentication sessions**: Stored in-memory (`app/api/auth.py`). For production with multiple server instances, migrate to Redis. Sessions expire after 24 hours.
 
-2. **Menu injection**: The entire menu is injected into the LLM system prompt every turn. For large menus (100+ items), consider semantic search or RAG.
+2. **In-memory call sessions**: Not suitable for production load balancing. Migrate to Redis for distributed deployments.
 
-3. **Order validation**: Two-pass system - LLM does semantic validation first, then strict parser validation against menu. Failures trigger clarification responses.
+3. **Menu injection**: The entire menu is injected into the LLM system prompt every turn. For large menus (100+ items), consider semantic search or RAG.
 
-4. **Frontend static serving**: FastAPI serves pre-built frontend from `app/static/`. Must run `npm run build` before starting server or use `./start.sh`.
+4. **Order validation**: Two-pass system - LLM does semantic validation first, then strict parser validation against menu. Failures trigger clarification responses.
 
-5. **Twilio webhook URLs**: Must be publicly accessible. Use ngrok for local development:
+5. **Frontend static serving**: FastAPI serves pre-built frontend from `app/static/`. Must run `npm run build` before starting server or use `./start.sh`.
+
+6. **Menu persistence**: Changes made via UI editor save immediately to `menu.yaml`. The agent picks up changes on next call (no restart needed due to dynamic loading).
+
+7. **Twilio webhook URLs**: Must be publicly accessible. Use ngrok for local development:
    ```bash
    ngrok http 8000
    ```
    Then update Twilio console with ngrok URL.
+
+## Dashboard Usage
+
+### First Time Setup
+
+1. **Build frontend**: `cd frontend && npm install && npm run build && cd ..`
+2. **Set password**: Add `DASHBOARD_PASSWORD=your-password` to `.env`
+3. **Start server**: `./start.sh` or `poetry run uvicorn app.main:app --reload`
+4. **Access dashboard**: Visit `http://localhost:8000`
+5. **Login**: Enter your password (default: `admin123`)
+
+### Menu Management
+
+**Via UI (Recommended)**:
+1. Login to dashboard
+2. Click "Menu" tab
+3. Click "+ Add New Item" to create items
+4. Click "✏️ Edit" on any item to modify
+5. Click "🗑️ Delete" to remove items
+6. Changes save immediately and persist to `menu.yaml`
+
+**Item Fields**:
+- **Name** (required): Item identifier (e.g., "cheeseburger")
+- **Description**: Shown to customers in future features
+- **Price** (required): Item price in dollars
+- **Category** (required): Group items (e.g., "burgers", "sides", "drinks")
+- **Options**: Modifiers/customizations (e.g., "no onions", "extra cheese", "large")
+
+**Tips**:
+- Categories are created automatically when you add items
+- Options are suggested to customers during ordering
+- Keep item names lowercase and simple for better LLM recognition
+- Delete unused categories by removing all items in that category
