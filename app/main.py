@@ -45,8 +45,8 @@ if os.path.exists(static_dir):
 
 
 @app.get("/")
-async def root(request: Request, authenticated: bool = Depends(auth.require_auth)):
-    """Serve frontend index.html (protected)."""
+async def root(request: Request):
+    """Serve frontend index.html (authentication handled client-side)."""
     index_path = os.path.join(static_dir, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
