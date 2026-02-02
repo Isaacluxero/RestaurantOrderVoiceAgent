@@ -52,9 +52,15 @@ class InMemoryMenuProvider(MenuProvider):
                     items = [
                         MenuItem(**item) for item in data.get("items", [])
                     ]
+                    categories = data.get("categories", [])
+
+                    # If no categories provided, extract from items
+                    if not categories:
+                        categories = sorted(list(set(item.category for item in items if item.category)))
+
                     self._menu = Menu(
                         items=items,
-                        categories=data.get("categories", []),
+                        categories=categories,
                     )
         return self._menu
 

@@ -1,0 +1,24 @@
+items:
+- name: burger
+  description: Classic burger
+  price: 10.0
+  category: mains
+  options:
+  - no onions
+  - extra cheese
+  - well done
+- name: fries
+  description: Crispy fries
+  price: 3.5
+  category: sides
+  options:
+  - large
+  - small
+- name: soda
+  description: Soft drink
+  price: 2.0
+  category: drinks
+  options:
+  - coke
+  - sprite
+  - diet
