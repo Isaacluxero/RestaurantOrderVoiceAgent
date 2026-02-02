@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
 
+    # Dashboard Authentication
+    dashboard_password: str = "admin123"  # Change this in .env for production
+    session_secret_key: str = "change-this-secret-key-in-production"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

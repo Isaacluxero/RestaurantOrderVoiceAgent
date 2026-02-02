@@ -1,11 +1,34 @@
-import { Menu } from '../types'
+import { useState } from 'react'
+import { Menu, MenuItem } from '../types'
 import './MenuView.css'
 
 interface MenuViewProps {
   menu: Menu
+  onMenuChange: () => void
 }
 
-function MenuView({ menu }: MenuViewProps) {
+interface ItemFormData {
+  name: string
+  description: string
+  price: string
+  category: string
+  options: string[]
+}
+
+function MenuView({ menu, onMenuChange }: MenuViewProps) {
+  const [showModal, setShowModal] = useState(false)
+  const [editingItem, setEditingItem] = useState<MenuItem | null>(null)
+  const [formData, setFormData] = useState<ItemFormData>({
+    name: '',
+    description: '',
+    price: '',
+    category: '',
+    options: []
+  })
+  const [optionInput, setOptionInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
   // Group items by category
   const itemsByCategory = menu.categories.map(category => ({
     category,
@@ -17,11 +40,140 @@ function MenuView({ menu }: MenuViewProps) {
     return `$${price.toFixed(2)}`
   }
 
+  const openAddModal = () => {
+    setEditingItem(null)
+    setFormData({
+      name: '',
+      description: '',
+      price: '',
+      category: '',
+      options: []
+    })
+    setError(null)
+    setShowModal(true)
+  }
+
+  const openEditModal = (item: MenuItem) => {
+    setEditingItem(item)
+    setFormData({
+      name: item.name,
+      description: item.description || '',
+      price: item.price?.toString() || '',
+      category: item.category || '',
+      options: [...(item.options || [])]
+    })
+    setError(null)
+    setShowModal(true)
+  }
+
+  const closeModal = () => {
+    setShowModal(false)
+    setEditingItem(null)
+    setFormData({
+      name: '',
+      description: '',
+      price: '',
+      category: '',
+      options: []
+    })
+    setOptionInput('')
+    setError(null)
+  }
+
+  const addOption = () => {
+    if (optionInput.trim()) {
+      setFormData({
+        ...formData,
+        options: [...formData.options, optionInput.trim()]
+      })
+      setOptionInput('')
+    }
+  }
+
+  const removeOption = (index: number) => {
+    setFormData({
+      ...formData,
+      options: formData.options.filter((_, i) => i !== index)
+    })
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+
+    try {
+      const itemData = {
+        name: formData.name.trim(),
+        description: formData.description.trim(),
+        price: parseFloat(formData.price),
+        category: formData.category.trim(),
+        options: formData.options
+      }
+
+      const url = editingItem
+        ? `/api/menu/items/${editingItem.name}`
+        : '/api/menu/items'
+
+      const method = editingItem ? 'PUT' : 'POST'
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(itemData),
+        credentials: 'include'
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.detail || 'Failed to save item')
+      }
+
+      // Refresh menu
+      onMenuChange()
+      closeModal()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save item')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDelete = async (itemName: string) => {
+    if (!confirm(`Are you sure you want to delete "${itemName}"?`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/menu/items/${itemName}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.detail || 'Failed to delete item')
+      }
+
+      // Refresh menu
+      onMenuChange()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete item')
+    }
+  }
+
   return (
     <div className="menu-view">
       <div className="menu-header">
-        <h2>Restaurant Menu</h2>
-        <p className="menu-subtitle">{menu.items.length} items available</p>
+        <div>
+          <h2>Restaurant Menu</h2>
+          <p className="menu-subtitle">{menu.items.length} items available</p>
+        </div>
+        <button onClick={openAddModal} className="add-item-button">
+          + Add New Item
+        </button>
       </div>
 
       <div className="menu-categories">
@@ -50,15 +202,137 @@ function MenuView({ menu }: MenuViewProps) {
                       </div>
                     </div>
                   )}
+                  <div className="menu-item-actions">
+                    <button onClick={() => openEditModal(item)} className="edit-button">
+                      ✏️ Edit
+                    </button>
+                    <button onClick={() => handleDelete(item.name)} className="delete-button">
+                      🗑️ Delete
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         ))}
       </div>
+
+      {showModal && (
+        <div className="modal-overlay" onClick={closeModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{editingItem ? 'Edit Menu Item' : 'Add New Menu Item'}</h2>
+              <button onClick={closeModal} className="modal-close">×</button>
+            </div>
+            <form onSubmit={handleSubmit}>
+              {error && <div className="form-error">{error}</div>}
+
+              <div className="form-group">
+                <label htmlFor="name">Item Name *</label>
+                <input
+                  id="name"
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  required
+                  disabled={loading}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="description">Description</label>
+                <textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  rows={3}
+                  disabled={loading}
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="price">Price *</label>
+                  <input
+                    id="price"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.price}
+                    onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                    required
+                    disabled={loading}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="category">Category *</label>
+                  <input
+                    id="category"
+                    type="text"
+                    value={formData.category}
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                    required
+                    disabled={loading}
+                    placeholder="e.g., burgers, sides, drinks"
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="options">Options/Modifiers</label>
+                <div className="options-input">
+                  <input
+                    id="options"
+                    type="text"
+                    value={optionInput}
+                    onChange={(e) => setOptionInput(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        addOption()
+                      }
+                    }}
+                    placeholder="Add an option (e.g., extra cheese, large)"
+                    disabled={loading}
+                  />
+                  <button type="button" onClick={addOption} disabled={loading || !optionInput.trim()}>
+                    Add
+                  </button>
+                </div>
+                {formData.options.length > 0 && (
+                  <div className="options-list">
+                    {formData.options.map((option, idx) => (
+                      <span key={idx} className="option-tag">
+                        {option}
+                        <button
+                          type="button"
+                          onClick={() => removeOption(idx)}
+                          className="remove-option"
+                          disabled={loading}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="modal-actions">
+                <button type="button" onClick={closeModal} disabled={loading} className="cancel-button">
+                  Cancel
+                </button>
+                <button type="submit" disabled={loading} className="save-button">
+                  {loading ? 'Saving...' : (editingItem ? 'Update Item' : 'Add Item')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
 export default MenuView
-

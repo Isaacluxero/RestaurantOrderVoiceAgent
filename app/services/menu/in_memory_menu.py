@@ -84,3 +84,79 @@ class InMemoryMenuProvider(MenuProvider):
                 return item
         return None
 
+    async def _save_menu(self) -> None:
+        """Save menu to YAML file."""
+        if self._menu is None:
+            return
+
+        # Convert menu to dict format
+        data = {
+            "items": [
+                {
+                    "name": item.name,
+                    "description": item.description,
+                    "price": item.price,
+                    "category": item.category,
+                    "options": item.options
+                }
+                for item in self._menu.items
+            ],
+            "categories": self._menu.categories
+        }
+
+        # Write to file
+        self.menu_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.menu_file, "w") as f:
+            yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+
+    async def add_item(self, item: MenuItem) -> None:
+        """Add a new item to the menu."""
+        menu = await self._load_menu()
+
+        # Check if item already exists
+        if any(i.name.lower() == item.name.lower() for i in menu.items):
+            raise ValueError(f"Item '{item.name}' already exists")
+
+        menu.items.append(item)
+
+        # Add category if new
+        if item.category and item.category not in menu.categories:
+            menu.categories.append(item.category)
+
+        await self._save_menu()
+
+    async def update_item(self, item_name: str, updated_item: MenuItem) -> None:
+        """Update an existing menu item."""
+        menu = await self._load_menu()
+
+        # Find and update item
+        found = False
+        for i, item in enumerate(menu.items):
+            if item.name.lower() == item_name.lower():
+                menu.items[i] = updated_item
+                found = True
+                break
+
+        if not found:
+            raise ValueError(f"Item '{item_name}' not found")
+
+        # Update categories
+        all_categories = set(item.category for item in menu.items if item.category)
+        menu.categories = sorted(list(all_categories))
+
+        await self._save_menu()
+
+    async def delete_item(self, item_name: str) -> None:
+        """Delete a menu item."""
+        menu = await self._load_menu()
+
+        # Find and remove item
+        item_name_lower = item_name.lower()
+        menu.items = [item for item in menu.items if item.name.lower() != item_name_lower]
+
+        # Update categories
+        all_categories = set(item.category for item in menu.items if item.category)
+        menu.categories = sorted(list(all_categories))
+
+        await self._save_menu()
+

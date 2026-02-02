@@ -5,15 +5,39 @@ import CallCard from './components/CallCard'
 import Header from './components/Header'
 import MenuView from './components/MenuView'
 import MetricsView from './components/MetricsView'
+import Login from './components/Login'
 
 type Tab = 'metrics' | 'orders' | 'menu'
 
 function App() {
+  const [authenticated, setAuthenticated] = useState(false)
+  const [checkingAuth, setCheckingAuth] = useState(true)
   const [activeTab, setActiveTab] = useState<Tab>('metrics')
   const [calls, setCalls] = useState<Call[]>([])
   const [menu, setMenu] = useState<Menu | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Check authentication status on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await fetch('/api/auth/session', {
+          credentials: 'include'
+        })
+        if (response.ok) {
+          const data = await response.json()
+          setAuthenticated(data.authenticated)
+        }
+      } catch (err) {
+        console.error('Auth check failed:', err)
+        setAuthenticated(false)
+      } finally {
+        setCheckingAuth(false)
+      }
+    }
+    checkAuth()
+  }, [])
 
   const fetchOrderHistory = async (suppressError = false) => {
     try {
@@ -85,9 +109,47 @@ function App() {
     }
   }
 
+  const handleLogin = () => {
+    setAuthenticated(true)
+    setCheckingAuth(false)
+  }
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include'
+      })
+    } catch (err) {
+      console.error('Logout failed:', err)
+    }
+    setAuthenticated(false)
+  }
+
+  // Show loading while checking auth
+  if (checkingAuth) {
+    return (
+      <div className="app">
+        <div className="loading">
+          <p>Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Show login if not authenticated
+  if (!authenticated) {
+    return <Login onLogin={handleLogin} />
+  }
+
   return (
     <div className="app">
-      <Header activeTab={activeTab} onTabChange={setActiveTab} onRefresh={handleRefresh} />
+      <Header
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        onRefresh={handleRefresh}
+        onLogout={handleLogout}
+      />
       <main className="main-content">
         {loading && (
           <div className="loading">
@@ -116,7 +178,7 @@ function App() {
           <MetricsView calls={calls} menu={menu} />
         )}
         {!loading && !error && activeTab === 'menu' && menu && (
-          <MenuView menu={menu} />
+          <MenuView menu={menu} onMenuChange={fetchMenu} />
         )}
       </main>
     </div>

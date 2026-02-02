@@ -6,9 +6,10 @@ interface HeaderProps {
   activeTab: Tab;
   onTabChange: (tab: Tab) => void;
   onRefresh: () => void;
+  onLogout: () => void;
 }
 
-function Header({ activeTab, onTabChange, onRefresh }: HeaderProps) {
+function Header({ activeTab, onTabChange, onRefresh, onLogout }: HeaderProps) {
   return (
     <header className="header">
       <div className="header-content">
@@ -39,6 +40,9 @@ function Header({ activeTab, onTabChange, onRefresh }: HeaderProps) {
           </div>
           <button onClick={onRefresh} className="refresh-button">
             🔄 Refresh
+          </button>
+          <button onClick={onLogout} className="logout-button">
+            🚪 Logout
           </button>
         </div>
       </div>
