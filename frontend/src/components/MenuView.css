@@ -13,14 +13,14 @@
 
 .menu-header > div h2 {
   font-size: 2.5rem;
-  color: white;
+  color: var(--color-text-primary);
   margin-bottom: 0.5rem;
   font-weight: 700;
 }
 
 .menu-subtitle {
   font-size: 1.1rem;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--color-text-secondary);
 }
 
 .menu-categories {
@@ -30,18 +30,19 @@
 }
 
 .menu-category {
-  background: white;
+  background: var(--color-bg-card);
   border-radius: 12px;
+  border: 1px solid var(--color-border);
   padding: 2rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
 }
 
 .category-title {
   font-size: 1.8rem;
-  color: #333;
+  color: var(--color-text-primary);
   margin-bottom: 1.5rem;
   padding-bottom: 0.75rem;
-  border-bottom: 3px solid #667eea;
+  border-bottom: 3px solid var(--color-accent-gold);
   font-weight: 600;
   text-transform: capitalize;
 }
@@ -53,16 +54,19 @@
 }
 
 .menu-item-card {
-  background: #f9fafb;
+  background: var(--color-bg-secondary);
   border-radius: 8px;
   padding: 1.25rem;
-  border-left: 4px solid #667eea;
+  border-left: 4px solid var(--color-accent-gold);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-accent-gold);
   transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .menu-item-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+  border-color: var(--color-border-light);
 }
 
 .menu-item-header {
@@ -74,7 +78,7 @@
 
 .menu-item-name {
   font-size: 1.25rem;
-  color: #333;
+  color: var(--color-text-primary);
   font-weight: 600;
   margin: 0;
   text-transform: capitalize;
@@ -82,14 +86,14 @@
 
 .menu-item-price {
   font-size: 1.1rem;
-  color: #667eea;
+  color: var(--color-accent-gold);
   font-weight: 700;
   white-space: nowrap;
   margin-left: 1rem;
 }
 
 .menu-item-description {
-  color: #666;
+  color: var(--color-text-secondary);
   font-size: 0.95rem;
   line-height: 1.5;
   margin-bottom: 0.75rem;
@@ -98,12 +102,12 @@
 .menu-item-options {
   margin-top: 0.75rem;
   padding-top: 0.75rem;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--color-border);
 }
 
 .options-label {
   font-size: 0.85rem;
-  color: #888;
+  color: var(--color-text-muted);
   font-weight: 600;
   display: block;
   margin-bottom: 0.5rem;
@@ -116,10 +120,11 @@
 }
 
 .option-tag {
-  background: #e0e7ff;
-  color: #4338ca;
+  background: var(--color-bg-tertiary);
+  color: var(--color-accent-gold-light);
   padding: 0.25rem 0.75rem;
   border-radius: 12px;
+  border: 1px solid var(--color-border);
   font-size: 0.8rem;
   font-weight: 500;
   display: inline-flex;
@@ -129,22 +134,22 @@
 
 .add-item-button {
   padding: 0.875rem 1.75rem;
-  background: white;
-  color: #667eea;
-  border: 2px solid white;
+  background: var(--color-accent-gold);
+  color: var(--color-bg-primary);
+  border: 2px solid var(--color-accent-gold);
   border-radius: 8px;
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .add-item-button:hover {
-  background: #667eea;
-  color: white;
+  background: var(--color-accent-gold-light);
+  border-color: var(--color-accent-gold-light);
   transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 8px rgba(212, 175, 55, 0.4);
 }
 
 .menu-item-actions {
@@ -152,7 +157,7 @@
   gap: 0.5rem;
   margin-top: 1rem;
   padding-top: 1rem;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--color-border);
 }
 
 .edit-button,
@@ -168,21 +173,25 @@
 }
 
 .edit-button {
-  background: #667eea;
-  color: white;
+  background: var(--color-accent-gold);
+  color: var(--color-bg-primary);
 }
 
 .edit-button:hover {
-  background: #5568d3;
+  background: var(--color-accent-gold-light);
+  transform: translateY(-1px);
 }
 
 .delete-button {
-  background: #fee;
-  color: #e53e3e;
+  background: transparent;
+  border: 1px solid var(--color-error);
+  color: var(--color-error);
 }
 
 .delete-button:hover {
-  background: #fcc;
+  background: var(--color-error);
+  color: var(--color-text-primary);
+  transform: translateY(-1px);
 }
 
 /* Modal Styles */
@@ -192,7 +201,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.85);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -201,14 +210,15 @@
 }
 
 .modal-content {
-  background: white;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 2rem;
   max-width: 600px;
   width: 100%;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
 }
 
 .modal-header {
@@ -221,14 +231,14 @@
 .modal-header h2 {
   margin: 0;
   font-size: 1.75rem;
-  color: #333;
+  color: var(--color-text-primary);
 }
 
 .modal-close {
   background: none;
   border: none;
   font-size: 2rem;
-  color: #999;
+  color: var(--color-text-muted);
   cursor: pointer;
   padding: 0;
   width: 2rem;
@@ -240,13 +250,13 @@
 }
 
 .modal-close:hover {
-  color: #333;
+  color: var(--color-text-primary);
 }
 
 .form-error {
-  background: #fee;
-  border: 1px solid #fcc;
-  color: #e53e3e;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid var(--color-error);
+  color: var(--color-error);
   padding: 0.75rem;
   border-radius: 6px;
   margin-bottom: 1rem;
@@ -260,7 +270,7 @@
 .form-group label {
   display: block;
   margin-bottom: 0.5rem;
-  color: #555;
+  color: var(--color-text-secondary);
   font-weight: 600;
   font-size: 0.95rem;
 }
@@ -270,7 +280,9 @@
 .form-group select {
   width: 100%;
   padding: 0.75rem;
-  border: 2px solid #e0e0e0;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  border: 2px solid var(--color-border);
   border-radius: 8px;
   font-size: 1rem;
   font-family: inherit;
@@ -281,14 +293,15 @@
 .form-group textarea:focus,
 .form-group select:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: var(--color-accent-gold);
 }
 
 .form-group input:disabled,
 .form-group textarea:disabled,
 .form-group select:disabled {
-  background-color: #f5f5f5;
+  background-color: var(--color-bg-tertiary);
   cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .form-group textarea {
@@ -318,18 +331,19 @@
 
 .cancel-new-category {
   padding: 0.75rem 1rem;
-  background: #f3f4f6;
-  color: #666;
-  border: none;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s;
   white-space: nowrap;
 }
 
 .cancel-new-category:hover:not(:disabled) {
-  background: #e5e7eb;
+  background: var(--color-bg-secondary);
+  border-color: var(--color-border-light);
 }
 
 .cancel-new-category:disabled {
@@ -348,17 +362,17 @@
 
 .options-input button {
   padding: 0.75rem 1.25rem;
-  background: #667eea;
-  color: white;
+  background: var(--color-accent-gold);
+  color: var(--color-bg-primary);
   border: none;
   border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s;
 }
 
 .options-input button:hover:not(:disabled) {
-  background: #5568d3;
+  background: var(--color-accent-gold-light);
 }
 
 .options-input button:disabled {
@@ -376,7 +390,7 @@
 .remove-option {
   background: none;
   border: none;
-  color: #4338ca;
+  color: var(--color-accent-gold);
   cursor: pointer;
   padding: 0;
   margin-left: 0.25rem;
@@ -387,7 +401,7 @@
 }
 
 .remove-option:hover:not(:disabled) {
-  color: #e53e3e;
+  color: var(--color-error);
 }
 
 .remove-option:disabled {
@@ -414,23 +428,25 @@
 }
 
 .cancel-button {
-  background: #f3f4f6;
-  color: #666;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
 }
 
 .cancel-button:hover:not(:disabled) {
-  background: #e5e7eb;
+  background: var(--color-bg-secondary);
+  border-color: var(--color-border-light);
 }
 
 .save-button {
-  background: #667eea;
-  color: white;
+  background: var(--color-accent-gold);
+  color: var(--color-bg-primary);
 }
 
 .save-button:hover:not(:disabled) {
-  background: #5568d3;
+  background: var(--color-accent-gold-light);
   transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 4px 8px rgba(212, 175, 55, 0.4);
 }
 
 .cancel-button:disabled,

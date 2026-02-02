@@ -1,6 +1,6 @@
 .app {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--color-bg-primary);
   padding-bottom: 2rem;
 }
 
@@ -15,9 +15,10 @@
 .empty {
   text-align: center;
   padding: 3rem;
-  background: white;
+  background: var(--color-bg-card);
   border-radius: 12px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
   margin-top: 2rem;
 }
 
@@ -25,23 +26,25 @@
 .error p,
 .empty p {
   font-size: 1.2rem;
-  color: #333;
+  color: var(--color-text-primary);
   margin-bottom: 1rem;
 }
 
 .error button {
   padding: 0.5rem 1.5rem;
-  background: #667eea;
-  color: white;
+  background: var(--color-accent-gold);
+  color: var(--color-bg-primary);
   border: none;
   border-radius: 6px;
   cursor: pointer;
   font-size: 1rem;
-  transition: background 0.2s;
+  font-weight: 600;
+  transition: all 0.2s;
 }
 
 .error button:hover {
-  background: #5568d3;
+  background: var(--color-accent-gold-light);
+  transform: translateY(-1px);
 }
 
 .calls-container {
@@ -49,19 +52,5 @@
   flex-direction: column;
   gap: 1.5rem;
   margin-top: 2rem;
-}
-
-@media (prefers-color-scheme: light) {
-  .loading,
-  .error,
-  .empty {
-    background: white;
-  }
-  
-  .loading p,
-  .error p,
-  .empty p {
-    color: #333;
-  }
 }
 
