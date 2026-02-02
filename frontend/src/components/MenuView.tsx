@@ -28,6 +28,8 @@ function MenuView({ menu, onMenuChange }: MenuViewProps) {
   const [optionInput, setOptionInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isNewCategory, setIsNewCategory] = useState(false)
+  const [newCategoryInput, setNewCategoryInput] = useState('')
 
   // Group items by category
   const itemsByCategory = menu.categories.map(category => ({
@@ -50,6 +52,8 @@ function MenuView({ menu, onMenuChange }: MenuViewProps) {
       options: []
     })
     setError(null)
+    setIsNewCategory(false)
+    setNewCategoryInput('')
     setShowModal(true)
   }
 
@@ -63,6 +67,10 @@ function MenuView({ menu, onMenuChange }: MenuViewProps) {
       options: [...(item.options || [])]
     })
     setError(null)
+    // Check if the item's category exists in current categories
+    const categoryExists = menu.categories.includes(item.category || '')
+    setIsNewCategory(!categoryExists)
+    setNewCategoryInput(categoryExists ? '' : item.category || '')
     setShowModal(true)
   }
 
@@ -78,6 +86,8 @@ function MenuView({ menu, onMenuChange }: MenuViewProps) {
     })
     setOptionInput('')
     setError(null)
+    setIsNewCategory(false)
+    setNewCategoryInput('')
   }
 
   const addOption = () => {
@@ -103,11 +113,20 @@ function MenuView({ menu, onMenuChange }: MenuViewProps) {
     setLoading(true)
 
     try {
+      // Use new category input if "New Category" is selected
+      const categoryValue = isNewCategory ? newCategoryInput.trim().toLowerCase() : formData.category.trim().toLowerCase()
+
+      if (!categoryValue) {
+        setError('Category is required')
+        setLoading(false)
+        return
+      }
+
       const itemData = {
         name: formData.name.trim(),
         description: formData.description.trim(),
         price: parseFloat(formData.price),
-        category: formData.category.trim(),
+        category: categoryValue,
         options: formData.options
       }
 
@@ -267,15 +286,56 @@ function MenuView({ menu, onMenuChange }: MenuViewProps) {
 
                 <div className="form-group">
                   <label htmlFor="category">Category *</label>
-                  <input
-                    id="category"
-                    type="text"
-                    value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    required
-                    disabled={loading}
-                    placeholder="e.g., burgers, sides, drinks"
-                  />
+                  {!isNewCategory ? (
+                    <div className="category-select-wrapper">
+                      <select
+                        id="category"
+                        value={formData.category}
+                        onChange={(e) => {
+                          if (e.target.value === '__new__') {
+                            setIsNewCategory(true)
+                            setFormData({ ...formData, category: '' })
+                          } else {
+                            setFormData({ ...formData, category: e.target.value })
+                          }
+                        }}
+                        required
+                        disabled={loading}
+                      >
+                        <option value="">Select a category...</option>
+                        {menu.categories.map((cat) => (
+                          <option key={cat} value={cat}>
+                            {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                          </option>
+                        ))}
+                        <option value="__new__">+ New Category</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="new-category-input">
+                      <input
+                        type="text"
+                        value={newCategoryInput}
+                        onChange={(e) => setNewCategoryInput(e.target.value)}
+                        placeholder="Enter new category name"
+                        required
+                        disabled={loading}
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsNewCategory(false)
+                          setNewCategoryInput('')
+                          setFormData({ ...formData, category: menu.categories[0] || '' })
+                        }}
+                        disabled={loading}
+                        className="cancel-new-category"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
