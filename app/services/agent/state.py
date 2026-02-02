@@ -20,8 +20,8 @@ class ConversationState(BaseModel):
     current_order: List[OrderItem] = Field(default_factory=list)  # Items currently in the order
     stage: ConversationStage = ConversationStage.GREETING  # Current conversation stage
     menu_context: Optional[str] = None  # Menu text for LLM context
-    pending_notes_item_name: Optional[str] = None  # If set, we're waiting for notes/customizations for this item
-    pending_notes_item_index: Optional[int] = None  # Index into current_order for pending notes item
+    pending_modifiers_item_name: Optional[str] = None  # If set, we're waiting for modifiers/customizations for this item
+    pending_modifiers_item_index: Optional[int] = None  # Index into current_order for pending modifiers item
     order_read_back: bool = False  # Flag to track if order has been read back in REVIEW stage
 
     def add_transcript_turn(self, role: str, text: str) -> None:
@@ -41,10 +41,10 @@ class ConversationState(BaseModel):
         self.current_order = []
         self.order_read_back = False
     
-    def clear_pending_notes(self) -> None:
-        """Clear pending notes state."""
-        self.pending_notes_item_name = None
-        self.pending_notes_item_index = None
+    def clear_pending_modifiers(self) -> None:
+        """Clear pending modifiers state."""
+        self.pending_modifiers_item_name = None
+        self.pending_modifiers_item_index = None
     
     def has_items(self) -> bool:
         """Check if order has any items."""

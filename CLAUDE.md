@@ -184,8 +184,6 @@ The app is configured for Railway deployment:
 - `nixpacks.toml` - Nixpacks build configuration
 - `build.sh` - Frontend build script
 
-**Important**: On startup, `app/main.py` calls `reset_db()` which **wipes all data**. Remove this for production.
-
 ### Database Migrations on Deploy
 
 Ensure migrations run after deployment:
@@ -197,17 +195,15 @@ Or add to Railway build command in `railway.json`.
 
 ## Important Implementation Details
 
-1. **Database reset on startup**: `app/main.py` lifespan event calls `reset_db()` - removes all data every deployment. This is for demo purposes only.
+1. **In-memory sessions**: Not suitable for production load balancing. Migrate to Redis for distributed deployments.
 
-2. **In-memory sessions**: Not suitable for production load balancing. Migrate to Redis for distributed deployments.
+2. **Menu injection**: The entire menu is injected into the LLM system prompt every turn. For large menus (100+ items), consider semantic search or RAG.
 
-3. **Menu injection**: The entire menu is injected into the LLM system prompt every turn. For large menus (100+ items), consider semantic search or RAG.
+3. **Order validation**: Two-pass system - LLM does semantic validation first, then strict parser validation against menu. Failures trigger clarification responses.
 
-4. **Order validation**: Two-pass system - LLM does semantic validation first, then strict parser validation against menu. Failures trigger clarification responses.
+4. **Frontend static serving**: FastAPI serves pre-built frontend from `app/static/`. Must run `npm run build` before starting server or use `./start.sh`.
 
-5. **Frontend static serving**: FastAPI serves pre-built frontend from `app/static/`. Must run `npm run build` before starting server or use `./start.sh`.
-
-6. **Twilio webhook URLs**: Must be publicly accessible. Use ngrok for local development:
+5. **Twilio webhook URLs**: Must be publicly accessible. Use ngrok for local development:
    ```bash
    ngrok http 8000
    ```

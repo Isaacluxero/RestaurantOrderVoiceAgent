@@ -129,8 +129,8 @@ class CallSessionManager:
             response_text = await self._handle_add_item(
                 action, speech_result, session, response_text
             )
-        elif action.get("type") == "add_notes":
-            response_text = await self._handle_add_notes(
+        elif action.get("type") == "add_modifiers":
+            response_text = await self._handle_add_modifiers(
                 action, speech_result, session, response_text
             )
         elif action.get("type") == "remove_item":
@@ -214,13 +214,13 @@ class CallSessionManager:
         # Map of stages to allowed action types
         stage_allowed_actions = {
             ConversationStage.GREETING: ["none"],
-            ConversationStage.ORDERING: ["add_item", "add_notes", "none"],
+            ConversationStage.ORDERING: ["add_item", "add_modifiers", "none"],
             ConversationStage.REVIEW: ["none"],  # Review only, no modifications
             ConversationStage.REVISION: [
                 "add_item",
                 "remove_item",
                 "modify_item",
-                "add_notes",
+                "add_modifiers",
                 "none",
             ],
             ConversationStage.CONCLUSION: ["none"],
@@ -272,12 +272,12 @@ class CallSessionManager:
                 logger.info(f"[SESSION MANAGER] Current order items: {order_items_repr}")
                 logger.info("=" * 80)
 
-                # If the customer did NOT provide notes for this item, ask for notes next
-                notes_text = ""
-                if isinstance(action.get("notes"), str):
-                    notes_text = action.get("notes", "").strip()
-                
-                if not notes_text:
+                # If the customer did NOT provide modifiers for this item, ask for modifiers next
+                modifiers_text = ""
+                if isinstance(action.get("modifiers"), str):
+                    modifiers_text = action.get("modifiers", "").strip()
+
+                if not modifiers_text:
                     try:
                         examples = await self.menu_repository.get_item_options(
                             order_item.item_name
@@ -285,8 +285,8 @@ class CallSessionManager:
                     except Exception:
                         examples = []
 
-                    session.state.pending_notes_item_name = order_item.item_name
-                    session.state.pending_notes_item_index = max(
+                    session.state.pending_modifiers_item_name = order_item.item_name
+                    session.state.pending_modifiers_item_index = max(
                         0, len(session.state.current_order) - 1
                     )
 
@@ -357,19 +357,19 @@ class CallSessionManager:
 
         return response_text
 
-    async def _handle_add_notes(
+    async def _handle_add_modifiers(
         self,
         action: Dict[str, Any],
         speech_result: Optional[str],
         session: CallSession,
         response_text: str,
     ) -> str:
-        """Handle add_notes action."""
-        notes_text = action.get("notes", "")
-        if isinstance(notes_text, str):
-            notes_text = notes_text.strip()
+        """Handle add_modifiers action."""
+        modifiers_text = action.get("modifiers", "")
+        if isinstance(modifiers_text, str):
+            modifiers_text = modifiers_text.strip()
         else:
-            notes_text = ""
+            modifiers_text = ""
 
         # Check if customer said "no" or "none" (standalone, not as part of "no pickles")
         user_input_lower = speech_result.lower().strip() if speech_result else ""
@@ -378,32 +378,32 @@ class CallSessionManager:
         is_no_response = (
             len(user_words) <= 2 and  # "no" or "no thanks" or "none" etc.
             any(word in user_words for word in NO_RESPONSE_INDICATORS) and
-            not notes_text  # Also check that LLM didn't extract actual notes
+            not modifiers_text  # Also check that LLM didn't extract actual modifiers
         )
 
-        idx = session.state.pending_notes_item_index
-        # Only add notes if they provided actual notes (not just "no")
+        idx = session.state.pending_modifiers_item_index
+        # Only add modifiers if they provided actual modifiers (not just "no")
         if (
-            notes_text
+            modifiers_text
             and not is_no_response
             and idx is not None
             and 0 <= idx < len(session.state.current_order)
         ):
             item = session.state.current_order[idx]
             if not item.modifiers:
-                item.modifiers = [notes_text]
+                item.modifiers = [modifiers_text]
             else:
-                item.modifiers.append(notes_text)
+                item.modifiers.append(modifiers_text)
             logger.info(
-                f"[SESSION MANAGER] Added notes to item at index {idx}: {notes_text}"
+                f"[SESSION MANAGER] Added modifiers to item at index {idx}: {modifiers_text}"
             )
         elif is_no_response:
             logger.info(
-                f"[SESSION MANAGER] Customer declined notes for item at index {idx}"
+                f"[SESSION MANAGER] Customer declined modifiers for item at index {idx}"
             )
 
-        # Always clear pending notes state after handling the response
-        session.state.clear_pending_notes()
+        # Always clear pending modifiers state after handling the response
+        session.state.clear_pending_modifiers()
 
         # Now continue ordering normally
         return "Perfect—anything else?"
@@ -448,23 +448,23 @@ class CallSessionManager:
     ) -> str:
         """Handle modify_item action."""
         item_name = action.get("item_name", "").strip().lower()
-        notes_text = action.get("notes", "").strip()
-        
+        modifiers_text = action.get("modifiers", "").strip()
+
         if item_name:
-            # Find the item and update its notes
+            # Find the item and update its modifiers
             found = False
             for item in session.state.current_order:
                 if item.item_name.lower() == item_name:
-                    if notes_text:
-                        item.modifiers = [notes_text]
+                    if modifiers_text:
+                        item.modifiers = [modifiers_text]
                     else:
                         item.modifiers = []
                     logger.info(
-                        f"[SESSION MANAGER] Modified item: {item_name} with notes: {notes_text}"
+                        f"[SESSION MANAGER] Modified item: {item_name} with modifiers: {modifiers_text}"
                     )
                     found = True
                     return f"Updated {item_name}. Anything else you'd like to change?"
-            
+
             if not found:
                 logger.warning(
                     f"[SESSION MANAGER] Tried to modify item '{item_name}' "
@@ -474,7 +474,7 @@ class CallSessionManager:
                     f"I don't see {item_name} in your order. "
                     f"What else would you like to change?"
                 )
-        
+
         return response_text
 
     async def _persist_order(self, session: CallSession) -> None:

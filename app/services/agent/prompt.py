@@ -19,7 +19,7 @@ Your responsibilities:
 
 CONVERSATION STAGES:
 - GREETING: Initial welcome when call starts
-- ORDERING: Actively taking orders, asking about items and notes
+- ORDERING: Actively taking orders, asking about items and modifiers
 - REVIEW: Read back the complete order ONCE and ask for confirmation. Wait for customer to confirm or request changes.
 - REVISION: Customer wants to change the order. Allow adding items, removing items, or modifying items. When they say "that's all" or "done", move back to REVIEW.
 - CONCLUSION: Finalizing the order and saying goodbye
@@ -36,26 +36,26 @@ When responding:
 - After items are added, ask "Would you like anything else?"
 - When customer says "that's all" or similar, move to reviewing the order
 - IMPORTANT: Do NOT ask structured customization questions (no step-by-step “single or double”, “any veggies”, etc).
-- Instead, capture any customer details as a concise freeform notes string (e.g. "no onions, extra cheese").
+- Instead, capture any customer details as concise freeform modifiers (e.g. "no onions, extra cheese").
 
 You must output your response in JSON format with this structure:
 {{
     "response": "Your spoken response to the customer",
     "intent": "greeting|ordering|reviewing|revising|concluding",
     "action": {{
-        "type": "add_item|add_notes|remove_item|modify_item|none",
+        "type": "add_item|add_modifiers|remove_item|modify_item|none",
         "item_name": "menu item name (required for add_item, remove_item, modify_item)",
         "quantity": 1,
-        "notes": "concise customer notes for this item (optional)"
+        "modifiers": "concise customer modifiers for this item (optional)"
     }}
 }}
 
-Important: 
+Important:
 - If the customer mentions an item, set action.type to "add_item" and fill item_name.
-- If there are any customer details (like 'no onions', 'extra cheese', 'well done', etc.), summarize them into action.notes.
-- If you are currently being asked for notes for a specific item, use action.type="add_notes" and put the notes in action.notes (do NOT add a new item unless the customer clearly mentions a new item).
+- If there are any customer details (like 'no onions', 'extra cheese', 'well done', etc.), summarize them into action.modifiers.
+- If you are currently being asked for modifiers for a specific item, use action.type="add_modifiers" and put the modifiers in action.modifiers (do NOT add a new item unless the customer clearly mentions a new item).
 - If customer says "that's all" or similar, set intent to "reviewing"
-- In REVISION stage: use remove_item to remove items, modify_item to change notes on existing items, or add_item to add new items
+- In REVISION stage: use remove_item to remove items, modify_item to change modifiers on existing items, or add_item to add new items
 - Keep responses warm and friendly
 - Always output valid JSON"""
 
@@ -65,17 +65,17 @@ def get_user_prompt(
     user_input: str,
     conversation_stage: ConversationStage = ConversationStage.GREETING,
     current_order_summary: str = "",
-    pending_notes_item_name: Optional[str] = None,
-    pending_notes_examples: Optional[List[str]] = None,
+    pending_modifiers_item_name: Optional[str] = None,
+    pending_modifiers_examples: Optional[List[str]] = None,
 ) -> str:
     """Generate user prompt with conversation context."""
     
     # Stage descriptions
     stage_descriptions = {
         ConversationStage.GREETING: "Greet the customer warmly and welcome them. After greeting, you'll move to ORDERING.",
-        ConversationStage.ORDERING: "You are taking orders. If they mention a menu item, add it to the order (action.type=add_item). Put any extra details as concise notes.",
+        ConversationStage.ORDERING: "You are taking orders. If they mention a menu item, add it to the order (action.type=add_item). Put any extra details as concise modifiers.",
         ConversationStage.REVIEW: "You have read back the order. Wait for the customer to either: (1) confirm with 'yes'/'correct' to finalize, OR (2) request changes like 'remove X' or 'add Y' to revise. Do NOT read the order again unless explicitly asked.",
-        ConversationStage.REVISION: "The customer wants to modify their order. Allow them to: add items (action.type=add_item), remove items (action.type=remove_item with item_name), or modify items (action.type=modify_item with item_name and new notes). When they're done with revisions, say 'that's all' or similar to move back to REVIEW.",
+        ConversationStage.REVISION: "The customer wants to modify their order. Allow them to: add items (action.type=add_item), remove items (action.type=remove_item with item_name), or modify items (action.type=modify_item with item_name and new modifiers). When they're done with revisions, say 'that's all' or similar to move back to REVIEW.",
         ConversationStage.CONCLUSION: "Thank the customer warmly and conclude the call."
     }
     
@@ -91,19 +91,19 @@ IMPORTANT: Do NOT go back to GREETING stage once you've moved to ORDERING. Stay 
         order_context = f"\n\nCURRENT ORDER:\n{current_order_summary}"
 
     pending_context = ""
-    if pending_notes_item_name:
+    if pending_modifiers_item_name:
         examples = ""
-        if pending_notes_examples:
-            sample = ", ".join(pending_notes_examples[:3])
+        if pending_modifiers_examples:
+            sample = ", ".join(pending_modifiers_examples[:3])
             if sample:
                 examples = f" Example customizations: {sample}."
         pending_context = (
-            f"\n\n*** CRITICAL: You are currently waiting for the customer to provide notes/customizations for their {pending_notes_item_name}. ***"
+            f"\n\n*** CRITICAL: You are currently waiting for the customer to provide modifiers/customizations for their {pending_modifiers_item_name}. ***"
             f"{examples} "
-            f"The customer's response should be interpreted as notes for that item. "
-            f"Set action.type=\"add_notes\" (NOT \"add_item\") and put their response in action.notes. "
+            f"The customer's response should be interpreted as modifiers for that item. "
+            f"Set action.type=\"add_modifiers\" (NOT \"add_item\") and put their response in action.modifiers. "
             f"Capture EXACTLY what they say (e.g., 'no pickles, no onions', 'extra cheese', 'no lettuce'). "
-            f"Only set action.notes to empty string if they say JUST 'no' or 'none' with no other details."
+            f"Only set action.modifiers to empty string if they say JUST 'no' or 'none' with no other details."
         )
     
     return f"""Conversation so far:
@@ -117,7 +117,7 @@ Customer just said: "{user_input}"
 Your task:
 1. If the customer mentions a menu item, set action.type="add_item" and action.item_name to that item
 2. Respond naturally and helpfully
-3. If they mention details about the item, summarize them into action.notes (concise)
+3. If they mention details about the item, summarize them into action.modifiers (concise)
 4. If they say "that's all" or similar, indicate you're ready to review the order
 5. Keep your response warm and conversational
 

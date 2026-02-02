@@ -37,12 +37,12 @@ class StageTransitionHandler:
     ) -> None:
         """
         Handle stage transitions based on current stage, user input, and intent.
-        
+
         Modifies state.stage and agent_response in place.
         """
         old_stage = state.stage
 
-        # Check for revision indicators (only in REVIEW stage)
+        # Check for revision indicators
         wants_revision = any(
             indicator in user_input_lower for indicator in REVISION_INDICATORS
         )
@@ -54,7 +54,7 @@ class StageTransitionHandler:
 
         if state.stage == ConversationStage.GREETING:
             state.stage = ConversationStage.ORDERING
-            
+
         elif state.stage == ConversationStage.ORDERING:
             if StageTransitionHandler.should_transition_to_review(
                 state, user_input_lower, intent
@@ -68,11 +68,17 @@ class StageTransitionHandler:
                         "I don't see any items in your order yet. What would you like to order?"
                     )
                     agent_response["intent"] = "ordering"
+                    agent_response["action"] = {"type": "none"}
                     # Stay in ORDERING stage
                 else:
+                    logger.info("[STAGE TRANSITION] Transitioning from ORDERING to REVIEW")
                     state.stage = ConversationStage.REVIEW
                     state.order_read_back = False  # Reset flag for new REVIEW entry
-                    
+                    # Clear response - manager will read back the order
+                    agent_response["response"] = ""
+                    agent_response["intent"] = "reviewing"
+                    agent_response["action"] = {"type": "none"}
+
         elif state.stage == ConversationStage.REVIEW:
             # Validate order is not empty before allowing conclusion
             if not state.has_items():
@@ -84,24 +90,31 @@ class StageTransitionHandler:
                 )
                 agent_response["intent"] = "ordering"
                 state.stage = ConversationStage.ORDERING
-            # Priority: Check for confirmation FIRST (go to CONCLUSION)
-            elif intent == "concluding" or is_confirming:
-                state.stage = ConversationStage.CONCLUSION
-                agent_response["intent"] = "completing"
-            # Then check for revision requests (go to REVISION)
-            elif intent == "revising" or wants_revision:
+            # FIXED: Check for revision FIRST (before confirmation)
+            # This prevents "yes, but actually add X" from being treated as pure confirmation
+            elif wants_revision and (intent == "revising" or not is_confirming):
+                logger.info("[STAGE TRANSITION] Revision requested in REVIEW stage")
                 state.stage = ConversationStage.REVISION
                 agent_response["intent"] = "revising"
-                
+            # Then check for confirmation (go to CONCLUSION)
+            elif intent == "concluding" or is_confirming:
+                logger.info("[STAGE TRANSITION] Order confirmed in REVIEW stage")
+                state.stage = ConversationStage.CONCLUSION
+                agent_response["intent"] = "completing"
+                # Clear response - manager will set the conclusion message
+                agent_response["response"] = ""
+
         elif state.stage == ConversationStage.REVISION:
             is_done_revising = any(
                 indicator in user_input_lower
-                for indicator in ["that's all", "that's it", "done"]
+                for indicator in DONE_ORDERING_INDICATORS
             )
             if intent == "reviewing" or is_done_revising:
+                logger.info("[STAGE TRANSITION] Done with revisions, back to REVIEW")
                 state.stage = ConversationStage.REVIEW
                 state.order_read_back = False  # Reset flag to read back updated order
-                agent_response["response"] = "Got it! Let me read back your updated order."
+                # Clear response - manager will read back the order
+                agent_response["response"] = ""
                 agent_response["intent"] = "reviewing"
 
         if old_stage != state.stage:
