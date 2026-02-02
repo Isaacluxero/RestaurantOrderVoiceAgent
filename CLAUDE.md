@@ -165,14 +165,16 @@ Required in `.env`:
 - `DATABASE_URL` - PostgreSQL or SQLite
 - `RESTAURANT_NAME` - Used in agent greeting
 
-**Authentication** (optional, defaults provided):
+**Optional Configuration** (defaults provided):
 - `DASHBOARD_PASSWORD` - Password for dashboard access (default: `admin123`)
 - `SESSION_SECRET_KEY` - Secret key for session signing (default: insecure, change for production)
+- `TAX_RATE` - Sales tax rate as decimal (default: `0.0925` = 9.25%)
 
 **Example .env**:
 ```env
 DASHBOARD_PASSWORD=my-secure-password
 SESSION_SECRET_KEY=$(openssl rand -hex 32)  # Generate random secret
+TAX_RATE=0.0925  # 9.25% sales tax
 ```
 
 ### Menu Configuration

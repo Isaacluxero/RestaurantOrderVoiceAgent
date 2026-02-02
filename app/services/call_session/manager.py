@@ -158,6 +158,7 @@ class CallSessionManager:
             order_items = session.state.current_order
             if not order_items:
                 order_summary_tts = "No items in order yet."
+                response_text = f"Perfect! Here's your order: {order_summary_tts}. Does that look correct?"
             else:
                 item_parts = []
                 for item in order_items:
@@ -171,8 +172,23 @@ class CallSessionManager:
                     order_summary_tts = f"{item_parts[0]} and {item_parts[1]}"
                 else:
                     order_summary_tts = ", ".join(item_parts[:-1]) + f", and {item_parts[-1]}"
-            
-            response_text = f"Perfect! Here's your order: {order_summary_tts}. Does that look correct?"
+
+                # Calculate order total
+                subtotal = 0.0
+                for item in order_items:
+                    menu_item = await self.menu_repository.get_item_by_name(item.item_name)
+                    if menu_item and menu_item.price:
+                        subtotal += menu_item.price * item.quantity
+
+                # Calculate tax and total
+                from app.core.config import settings
+                tax = subtotal * settings.tax_rate
+                total = subtotal + tax
+
+                # Format total for speech
+                total_text = f" Your total is ${total:.2f}."
+                response_text = f"Perfect! Here's your order: {order_summary_tts}.{total_text} Does that look correct?"
+
             session.state.order_read_back = True  # Mark as read back
             logger.info(f"[SESSION MANAGER] First entry into REVIEW stage - reading back order")
         

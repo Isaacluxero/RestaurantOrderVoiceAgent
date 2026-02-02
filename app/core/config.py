@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     dashboard_password: str = "admin123"  # Change this in .env for production
     session_secret_key: str = "change-this-secret-key-in-production"
 
+    # Order Configuration
+    tax_rate: float = 0.0925  # Tax rate as decimal (default 9.25%)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
