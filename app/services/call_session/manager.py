@@ -240,32 +240,8 @@ class CallSessionManager:
         elif action.get("type") == "modify_item":
             response_text = await self._handle_modify_item(action, session, response_text)
 
-        # Check if order is being confirmed
-        if intent == "confirming_order" or intent == "completing":
-            # Persist order
-            persist_success = await self._persist_order(session)
-
-            if intent == "completing":
-                # End call - order was already read back in REVIEW stage
-                from app.services.agent.stages import ConversationStage
-                from app.core.config import settings
-
-                if persist_success:
-                    response_text = f"Perfect! Thank you for calling {settings.restaurant_name}! Your order will be ready in 30 minutes."
-                    session.state.stage = ConversationStage.CONCLUSION
-                else:
-                    # Critical error - order failed to save
-                    logger.error(
-                        f"[SESSION MANAGER] Order persistence failed for call {call_sid}, "
-                        f"not completing order"
-                    )
-                    response_text = (
-                        "I'm sorry, we're having technical difficulties. "
-                        "Please call us back in a few minutes to place your order."
-                    )
-                    session.state.stage = ConversationStage.CONCLUSION
-
         # Handle REVIEW stage: read back order on first entry (server-side)
+        # IMPORTANT: Do this BEFORE confirmation check to ensure revised orders are read back
         from app.services.agent.stages import ConversationStage
 
         # Check if customer is asking for order repeat in REVIEW stage
@@ -318,7 +294,39 @@ class CallSessionManager:
                 logger.info(f"[SESSION MANAGER] Customer requested order repeat in REVIEW stage")
             else:
                 logger.info(f"[SESSION MANAGER] First entry into REVIEW stage - reading back order")
-        
+
+        # Check if order is being confirmed (AFTER readback to ensure revised orders are read)
+        if intent == "confirming_order" or intent == "completing":
+            # Ensure order was read back before allowing completion
+            if session.state.stage == ConversationStage.REVIEW and not session.state.order_read_back:
+                logger.warning(
+                    "[SESSION MANAGER] Customer tried to confirm before order was read back, "
+                    "forcing readback first"
+                )
+                # Don't complete yet - wait for next turn after readback
+            else:
+                # Persist order
+                persist_success = await self._persist_order(session)
+
+                if intent == "completing":
+                    # End call - order was already read back in REVIEW stage
+                    from app.core.config import settings
+
+                    if persist_success:
+                        response_text = f"Perfect! Thank you for calling {settings.restaurant_name}! Your order will be ready in 30 minutes."
+                        session.state.stage = ConversationStage.CONCLUSION
+                    else:
+                        # Critical error - order failed to save
+                        logger.error(
+                            f"[SESSION MANAGER] Order persistence failed for call {call_sid}, "
+                            f"not completing order"
+                        )
+                        response_text = (
+                            "I'm sorry, we're having technical difficulties. "
+                            "Please call us back in a few minutes to place your order."
+                        )
+                        session.state.stage = ConversationStage.CONCLUSION
+
         # Generate TwiML response
         if session.state.stage == ConversationStage.CONCLUSION:
             # End call - escape XML and use consistent voice
