@@ -50,10 +50,10 @@ class AgentService:
             menu_text = await self.menu_repository.get_menu_text()
             state.menu_context = menu_text
 
-        # Build conversation context
-        context = state.get_transcript_text()
+        # Build conversation context (use sliding window to reduce latency)
+        context = state.get_recent_transcript(max_turns=6)  # Keep last 6 turns for context
         order_summary = state.get_order_summary()
-        menu_text = await self.menu_repository.get_menu_text()
+        menu_text = state.menu_context  # Use cached menu from state (already loaded above)
 
         # ===== COMPREHENSIVE LOGGING: AGENT INPUTS =====
         logger.info("=" * 80)
@@ -89,7 +89,7 @@ class AgentService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.7,
+                temperature=0.5,  # Lowered from 0.7 for faster, more deterministic responses
                 response_format={"type": "json_object"},
             )
 

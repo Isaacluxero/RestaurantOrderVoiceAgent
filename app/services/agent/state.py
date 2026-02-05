@@ -34,6 +34,23 @@ class ConversationState(BaseModel):
         """Get full transcript as text."""
         return "\n".join(self.transcript)
 
+    def get_recent_transcript(self, max_turns: int = 6) -> str:
+        """
+        Get last N turns of conversation for context (sliding window).
+
+        This reduces token usage and latency by sending only recent context to LLM.
+        Order state is tracked separately in current_order, so we don't need full history.
+
+        Args:
+            max_turns: Maximum number of recent turns to include (default: 6)
+
+        Returns:
+            Recent transcript as text
+        """
+        if len(self.transcript) <= max_turns:
+            return "\n".join(self.transcript)
+        return "\n".join(self.transcript[-max_turns:])
+
     def add_order_item(self, item: OrderItem) -> None:
         """Add an item to the current order."""
         self.current_order.append(item)
