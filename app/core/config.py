@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # Order Configuration
     tax_rate: float = 0.0925  # Tax rate as decimal (default 9.25%)
 
+    # Speech Configuration
+    speech_timeout: str = "auto"  # Twilio speech timeout ("auto" or number of seconds)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

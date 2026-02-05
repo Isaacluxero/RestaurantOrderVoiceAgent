@@ -68,21 +68,11 @@ class AgentService:
         # Get system and user prompts (simplified)
         system_prompt = get_system_prompt(menu_text)
 
-        pending_modifiers_item_name = state.pending_modifiers_item_name
-        pending_modifiers_examples = None
-        if pending_modifiers_item_name:
-            try:
-                pending_modifiers_examples = await self.menu_repository.get_item_options(pending_modifiers_item_name)
-            except Exception:
-                pending_modifiers_examples = None
-
         user_prompt = get_user_prompt(
             context,
             user_input,
             conversation_stage=state.stage,
             current_order_summary=order_summary,
-            pending_modifiers_item_name=pending_modifiers_item_name,
-            pending_modifiers_examples=pending_modifiers_examples,
         )
 
         # ===== LOGGING: PROMPTS SENT TO LLM =====

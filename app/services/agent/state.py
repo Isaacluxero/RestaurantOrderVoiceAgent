@@ -23,6 +23,8 @@ class ConversationState(BaseModel):
     pending_modifiers_item_name: Optional[str] = None  # If set, we're waiting for modifiers/customizations for this item
     pending_modifiers_item_index: Optional[int] = None  # Index into current_order for pending modifiers item
     order_read_back: bool = False  # Flag to track if order has been read back in REVIEW stage
+    turn_count: int = 0  # Total number of conversation turns (for turn limit)
+    consecutive_errors: int = 0  # Count of consecutive agent errors (for error tracking)
 
     def add_transcript_turn(self, role: str, text: str) -> None:
         """Add a turn to the transcript."""

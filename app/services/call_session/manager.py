@@ -96,13 +96,46 @@ class CallSessionManager:
         if not session:
             session = await self.create_session(call_sid)
 
-        # If no speech result provided, we'll need to gather it
+        # Validate speech result
         if not speech_result or not speech_result.strip():
-            # This shouldn't happen in normal flow, but handle gracefully
+            # Empty or whitespace-only speech
             logger.warning(
                 f"[SESSION MANAGER] Empty speech result for call {call_sid}"
             )
             response_text = "I didn't catch that. Could you please repeat what you'd like?"
+            gather_url = f"{base_url}/webhooks/voice/gather?CallSid={call_sid}" if base_url else f"/webhooks/voice/gather?CallSid={call_sid}"
+            return self.tts_service.generate_twiml_with_gather(
+                response_text, gather_url
+            )
+
+        # Check for very short speech (likely transcription error or noise)
+        if len(speech_result.strip()) < 2:
+            logger.warning(
+                f"[SESSION MANAGER] Very short speech result for call {call_sid}: '{speech_result}'"
+            )
+            response_text = "I didn't quite get that. Could you please say that again?"
+            gather_url = f"{base_url}/webhooks/voice/gather?CallSid={call_sid}" if base_url else f"/webhooks/voice/gather?CallSid={call_sid}"
+            return self.tts_service.generate_twiml_with_gather(
+                response_text, gather_url
+            )
+
+        # Increment turn count
+        session.state.turn_count += 1
+        logger.info(f"[SESSION MANAGER] Turn {session.state.turn_count} for call {call_sid}")
+
+        # Check turn limit (20 turns max)
+        MAX_TURNS = 20
+        if session.state.turn_count >= MAX_TURNS:
+            logger.warning(
+                f"[SESSION MANAGER] Turn limit reached ({MAX_TURNS}) for call {call_sid}, "
+                f"offering to transfer"
+            )
+            response_text = (
+                "I apologize, but I'm having difficulty completing your order. "
+                "Would you like me to transfer you to someone who can help?"
+            )
+            from app.services.agent.stages import ConversationStage
+            session.state.stage = ConversationStage.CONCLUSION
             gather_url = f"{base_url}/webhooks/voice/gather?CallSid={call_sid}" if base_url else f"/webhooks/voice/gather?CallSid={call_sid}"
             return self.tts_service.generate_twiml_with_gather(
                 response_text, gather_url
@@ -136,6 +169,34 @@ class CallSessionManager:
             )
             has_error = True
             response_text = "I'm sorry, I didn't understand that. Could you please repeat?"
+
+        # Track consecutive errors
+        if has_error:
+            session.state.consecutive_errors += 1
+            logger.warning(
+                f"[SESSION MANAGER] Consecutive errors: {session.state.consecutive_errors} "
+                f"for call {call_sid}"
+            )
+
+            # If 3+ consecutive errors, offer to transfer
+            if session.state.consecutive_errors >= 3:
+                logger.error(
+                    f"[SESSION MANAGER] Too many consecutive errors ({session.state.consecutive_errors}) "
+                    f"for call {call_sid}, offering to transfer"
+                )
+                response_text = (
+                    "I'm having trouble understanding you. "
+                    "Would you like me to transfer you to someone who can help with your order?"
+                )
+                from app.services.agent.stages import ConversationStage
+                session.state.stage = ConversationStage.CONCLUSION
+                gather_url = f"{base_url}/webhooks/voice/gather?CallSid={call_sid}" if base_url else f"/webhooks/voice/gather?CallSid={call_sid}"
+                return self.tts_service.generate_twiml_with_gather(
+                    response_text, gather_url
+                )
+        else:
+            # Reset error counter on successful response
+            session.state.consecutive_errors = 0
 
         # Skip action processing if there was an error (agent didn't understand)
         if has_error:
@@ -182,18 +243,40 @@ class CallSessionManager:
         # Check if order is being confirmed
         if intent == "confirming_order" or intent == "completing":
             # Persist order
-            await self._persist_order(session)
+            persist_success = await self._persist_order(session)
 
             if intent == "completing":
                 # End call - order was already read back in REVIEW stage
                 from app.services.agent.stages import ConversationStage
                 from app.core.config import settings
-                response_text = f"Perfect! Thank you for calling {settings.restaurant_name}! Your order will be ready in 30 minutes."
-                session.state.stage = ConversationStage.CONCLUSION
+
+                if persist_success:
+                    response_text = f"Perfect! Thank you for calling {settings.restaurant_name}! Your order will be ready in 30 minutes."
+                    session.state.stage = ConversationStage.CONCLUSION
+                else:
+                    # Critical error - order failed to save
+                    logger.error(
+                        f"[SESSION MANAGER] Order persistence failed for call {call_sid}, "
+                        f"not completing order"
+                    )
+                    response_text = (
+                        "I'm sorry, we're having technical difficulties. "
+                        "Please call us back in a few minutes to place your order."
+                    )
+                    session.state.stage = ConversationStage.CONCLUSION
 
         # Handle REVIEW stage: read back order on first entry (server-side)
         from app.services.agent.stages import ConversationStage
-        if session.state.stage == ConversationStage.REVIEW and not session.state.order_read_back:
+
+        # Check if customer is asking for order repeat in REVIEW stage
+        repeat_keywords = ["repeat", "say that again", "what did", "can you repeat", "tell me again", "what was"]
+        is_asking_repeat = False
+        if session.state.stage == ConversationStage.REVIEW and speech_result:
+            speech_lower = speech_result.lower()
+            is_asking_repeat = any(keyword in speech_lower for keyword in repeat_keywords)
+
+        # Read back order if: (1) first time in REVIEW, OR (2) customer asks for repeat
+        if session.state.stage == ConversationStage.REVIEW and (not session.state.order_read_back or is_asking_repeat):
             # First time in REVIEW - read back the order
             # Format order summary for TTS (no newlines, natural speech)
             order_items = session.state.current_order
@@ -231,7 +314,10 @@ class CallSessionManager:
                 response_text = f"Perfect! Here's your order: {order_summary_tts}.{total_text} Does that look correct?"
 
             session.state.order_read_back = True  # Mark as read back
-            logger.info(f"[SESSION MANAGER] First entry into REVIEW stage - reading back order")
+            if is_asking_repeat:
+                logger.info(f"[SESSION MANAGER] Customer requested order repeat in REVIEW stage")
+            else:
+                logger.info(f"[SESSION MANAGER] First entry into REVIEW stage - reading back order")
         
         # Generate TwiML response
         if session.state.stage == ConversationStage.CONCLUSION:
@@ -271,13 +357,12 @@ class CallSessionManager:
         # Map of stages to allowed action types
         stage_allowed_actions = {
             ConversationStage.GREETING: ["none"],
-            ConversationStage.ORDERING: ["add_item", "add_modifiers", "none"],
+            ConversationStage.ORDERING: ["add_item", "none"],
             ConversationStage.REVIEW: ["none"],  # Review only, no modifications
             ConversationStage.REVISION: [
                 "add_item",
                 "remove_item",
                 "modify_item",
-                "add_modifiers",
                 "none",
             ],
             ConversationStage.CONCLUSION: ["none"],
@@ -329,81 +414,8 @@ class CallSessionManager:
                 logger.info(f"[SESSION MANAGER] Current order items: {order_items_repr}")
                 logger.info("=" * 80)
 
-                # If the customer did NOT provide modifiers for this item, ask for modifiers next
-                modifiers_text = ""
-                if isinstance(action.get("modifiers"), str):
-                    modifiers_text = action.get("modifiers", "").strip()
-
-                if not modifiers_text:
-                    try:
-                        examples = await self.menu_repository.get_item_options(
-                            order_item.item_name
-                        )
-                    except Exception:
-                        examples = []
-
-                    session.state.pending_modifiers_item_name = order_item.item_name
-                    session.state.pending_modifiers_item_index = max(
-                        0, len(session.state.current_order) - 1
-                    )
-
-                    if examples:
-                        # Check if these are size options (fries, drinks, etc.)
-                        size_options = ["small", "medium", "large"]
-                        examples_lower = [opt.lower() for opt in examples]
-                        has_sizes = any(size in examples_lower for size in size_options)
-                        
-                        if has_sizes:
-                            # Format size options: "in small, medium, or large"
-                            # Sort sizes: small, medium, large
-                            size_order = ["small", "medium", "large"]
-                            size_list = [opt for opt in size_order if opt in examples_lower]
-                            
-                            if len(size_list) == 2:
-                                sample_text = f"{size_list[0]} or {size_list[1]}"
-                            elif len(size_list) == 3:
-                                sample_text = f"{size_list[0]}, {size_list[1]}, or {size_list[2]}"
-                            else:
-                                sample_text = " or ".join(size_list) if size_list else " or ".join([opt for opt in examples if opt.lower() in size_options])
-                            response_text = f"Ok, would you like them in {sample_text}?"
-                        else:
-                            # For burgers: extract positive components (remove "no", "extra", etc.)
-                            # Convert "no onions" -> "onions", "extra cheese" -> "cheese"
-                            positive_components = []
-                            for opt in examples:
-                                opt_lower = opt.lower()
-                                # Remove "no ", "extra ", "double " prefixes
-                                clean_opt = opt_lower.replace("no ", "").replace("extra ", "").replace("double ", "").strip()
-                                # Skip if it's just a patty mention (not a typical topping)
-                                # Keep only common toppings: onions, pickles, lettuce, cheese, tomato
-                                if clean_opt not in positive_components and clean_opt not in ["patty"]:
-                                    positive_components.append(clean_opt)
-                            
-                            if positive_components:
-                                # Limit to first 3 most common toppings
-                                positive_components = positive_components[:3]
-                                if len(positive_components) == 1:
-                                    sample_text = positive_components[0]
-                                elif len(positive_components) == 2:
-                                    sample_text = f"{positive_components[0]} and {positive_components[1]}"
-                                else:
-                                    sample_text = ", ".join(positive_components[:-1]) + f", and {positive_components[-1]}"
-                                response_text = f"Ok, would you like it with {sample_text}?"
-                            else:
-                                # Fallback to original format if we can't extract positive components
-                                sample_list = examples[:3]
-                                if len(sample_list) == 1:
-                                    sample_text = sample_list[0]
-                                elif len(sample_list) == 2:
-                                    sample_text = f"{sample_list[0]} and {sample_list[1]}"
-                                else:
-                                    sample_text = ", ".join(sample_list[:-1]) + f", and {sample_list[-1]}"
-                                response_text = f"Ok, would you like {sample_text} with that?"
-                    else:
-                        response_text = (
-                            f"Got it. Any customizations for your {order_item.item_name}? "
-                            f"If not, just say no."
-                        )
+                # Simplified: Trust LLM to capture modifiers in the conversation naturally
+                # No automatic follow-up questions - keeps flow conversational
             else:
                 logger.warning(f"[SESSION MANAGER] Item validation failed: {errors}")
                 if errors:
@@ -421,49 +433,17 @@ class CallSessionManager:
         session: CallSession,
         response_text: str,
     ) -> str:
-        """Handle add_modifiers action."""
-        modifiers_text = action.get("modifiers", "")
-        if isinstance(modifiers_text, str):
-            modifiers_text = modifiers_text.strip()
-        else:
-            modifiers_text = ""
+        """
+        Handle add_modifiers action (DEPRECATED - no longer used).
 
-        # Check if customer said "no" or "none" (standalone, not as part of "no pickles")
-        user_input_lower = speech_result.lower().strip() if speech_result else ""
-        # Only treat as "no response" if the entire response is just "no" or similar (no other words)
-        user_words = user_input_lower.split()
-        is_no_response = (
-            len(user_words) <= 2 and  # "no" or "no thanks" or "none" etc.
-            any(word in user_words for word in NO_RESPONSE_INDICATORS) and
-            not modifiers_text  # Also check that LLM didn't extract actual modifiers
+        Kept for backward compatibility but does nothing.
+        Modifiers are now captured directly in add_item actions by the LLM.
+        """
+        logger.info(
+            "[SESSION MANAGER] add_modifiers action received but is deprecated. "
+            "Modifiers should be captured in add_item actions."
         )
-
-        idx = session.state.pending_modifiers_item_index
-        # Only add modifiers if they provided actual modifiers (not just "no")
-        if (
-            modifiers_text
-            and not is_no_response
-            and idx is not None
-            and 0 <= idx < len(session.state.current_order)
-        ):
-            item = session.state.current_order[idx]
-            if not item.modifiers:
-                item.modifiers = [modifiers_text]
-            else:
-                item.modifiers.append(modifiers_text)
-            logger.info(
-                f"[SESSION MANAGER] Added modifiers to item at index {idx}: {modifiers_text}"
-            )
-        elif is_no_response:
-            logger.info(
-                f"[SESSION MANAGER] Customer declined modifiers for item at index {idx}"
-            )
-
-        # Always clear pending modifiers state after handling the response
-        session.state.clear_pending_modifiers()
-
-        # Now continue ordering normally
-        return "Perfect—anything else?"
+        return response_text
 
     async def _handle_remove_item(
         self,
@@ -534,33 +514,53 @@ class CallSessionManager:
 
         return response_text
 
-    async def _persist_order(self, session: CallSession) -> None:
-        """Persist the current order to database."""
+    async def _persist_order(self, session: CallSession) -> bool:
+        """
+        Persist the current order to database.
+
+        Returns:
+            True if order was successfully persisted, False otherwise
+        """
         if not session.state.current_order:
-            return
+            logger.warning("[SESSION MANAGER] No items in order, skipping persistence")
+            return True  # Empty order is not an error
 
-        # Convert state items to dict format
-        order_items = [
-            {
-                "item_name": item.item_name,
-                "quantity": item.quantity,
-                "modifiers": item.modifiers,
-            }
-            for item in session.state.current_order
-        ]
+        try:
+            # Convert state items to dict format
+            order_items = [
+                {
+                    "item_name": item.item_name,
+                    "quantity": item.quantity,
+                    "modifiers": item.modifiers,
+                }
+                for item in session.state.current_order
+            ]
 
-        # Create order
-        order = await self.order_persistence.create_order(
-            call_id=session.call_id,
-            raw_text=session.state.get_transcript_text(),
-            structured_order={"items": order_items},
-        )
+            # Create order
+            order = await self.order_persistence.create_order(
+                call_id=session.call_id,
+                raw_text=session.state.get_transcript_text(),
+                structured_order={"items": order_items},
+            )
 
-        # Add order items
-        await self.order_persistence.add_order_items(order.id, order_items)
+            # Add order items
+            await self.order_persistence.add_order_items(order.id, order_items)
 
-        # Confirm order
-        await self.order_persistence.confirm_order(order.id)
+            # Confirm order
+            await self.order_persistence.confirm_order(order.id)
+
+            logger.info(
+                f"[SESSION MANAGER] Successfully persisted order {order.id} "
+                f"for call {session.call_sid} with {len(order_items)} items"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"[SESSION MANAGER] CRITICAL: Failed to persist order for call {session.call_sid}: {e}",
+                exc_info=True
+            )
+            return False
 
     async def end_session(self, call_sid: str, status: str = "completed") -> None:
         """End a call session and clean up.

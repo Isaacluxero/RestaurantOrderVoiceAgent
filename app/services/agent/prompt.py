@@ -53,7 +53,7 @@ You must output your response in JSON format with this structure:
 Important:
 - If the customer mentions an item, set action.type to "add_item" and fill item_name.
 - If there are any customer details (like 'no onions', 'extra cheese', 'well done', etc.), summarize them into action.modifiers.
-- If you are currently being asked for modifiers for a specific item, use action.type="add_modifiers" and put the modifiers in action.modifiers (do NOT add a new item unless the customer clearly mentions a new item).
+- Capture modifiers naturally in the conversation - don't force a separate modifiers question.
 - If customer says "that's all" or similar, set intent to "reviewing"
 - In REVISION stage: use remove_item to remove items, modify_item to change modifiers on existing items, or add_item to add new items
 - Keep responses warm and friendly
@@ -69,7 +69,7 @@ def get_user_prompt(
     pending_modifiers_examples: Optional[List[str]] = None,
 ) -> str:
     """Generate user prompt with conversation context."""
-    
+
     # Stage descriptions
     stage_descriptions = {
         ConversationStage.GREETING: "Greet the customer warmly and welcome them. After greeting, you'll move to ORDERING.",
@@ -78,39 +78,22 @@ def get_user_prompt(
         ConversationStage.REVISION: "The customer wants to modify their order. Allow them to: add items (action.type=add_item), remove items (action.type=remove_item with item_name), or modify items (action.type=modify_item with item_name and new modifiers). When they're done with revisions, say 'that's all' or similar to move back to REVIEW.",
         ConversationStage.CONCLUSION: "Thank the customer warmly and conclude the call."
     }
-    
+
     stage_context = f"""
 CONVERSATION STAGE: {conversation_stage.value.upper()}
 {stage_descriptions.get(conversation_stage, '')}
 
 IMPORTANT: Do NOT go back to GREETING stage once you've moved to ORDERING. Stay in the current stage unless customer indicates they're done ordering (then move to REVIEW).
 """
-    
+
     order_context = ""
     if current_order_summary and current_order_summary != "No items in order yet.":
         order_context = f"\n\nCURRENT ORDER:\n{current_order_summary}"
 
-    pending_context = ""
-    if pending_modifiers_item_name:
-        examples = ""
-        if pending_modifiers_examples:
-            sample = ", ".join(pending_modifiers_examples[:3])
-            if sample:
-                examples = f" Example customizations: {sample}."
-        pending_context = (
-            f"\n\n*** CRITICAL: You are currently waiting for the customer to provide modifiers/customizations for their {pending_modifiers_item_name}. ***"
-            f"{examples} "
-            f"The customer's response should be interpreted as modifiers for that item. "
-            f"Set action.type=\"add_modifiers\" (NOT \"add_item\") and put their response in action.modifiers. "
-            f"Capture EXACTLY what they say (e.g., 'no pickles, no onions', 'extra cheese', 'no lettuce'). "
-            f"Only set action.modifiers to empty string if they say JUST 'no' or 'none' with no other details."
-        )
-    
     return f"""Conversation so far:
 {state_text}
 {stage_context}
 {order_context}
-{pending_context}
 
 Customer just said: "{user_input}"
 

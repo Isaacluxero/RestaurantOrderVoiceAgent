@@ -129,3 +129,11 @@ class StageTransitionHandler:
                 f"[STAGE TRANSITION] Stage changed: {old_stage.value} -> {state.stage.value}"
             )
 
+            # Clear pending modifiers state when leaving ORDERING or REVISION stages
+            if old_stage in [ConversationStage.ORDERING, ConversationStage.REVISION]:
+                if state.pending_modifiers_item_name or state.pending_modifiers_item_index is not None:
+                    logger.info(
+                        "[STAGE TRANSITION] Clearing pending modifiers state on stage change"
+                    )
+                    state.clear_pending_modifiers()
+

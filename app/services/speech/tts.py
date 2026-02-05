@@ -82,10 +82,10 @@ class TextToSpeechService:
 
         return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Gather action="{action_url}" method="POST" input="speech" speechTimeout="auto" language="en-US">
+    <Gather action="{action_url}" method="POST" input="speech" speechTimeout="{settings.speech_timeout}" language="en-US">
         <Say voice="Polly.Joanna-Neural">{escaped_text}</Say>
     </Gather>
-    <Say voice="Polly.Joanna-Neural">I didn't catch that. Please try again.</Say>
+    <Say voice="Polly.Joanna-Neural">I didn't catch that. {escaped_text}</Say>
     <Redirect>{action_url}</Redirect>
 </Response>"""
 
