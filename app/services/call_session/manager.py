@@ -97,9 +97,12 @@ class CallSessionManager:
             session = await self.create_session(call_sid)
 
         # If no speech result provided, we'll need to gather it
-        if not speech_result:
+        if not speech_result or not speech_result.strip():
             # This shouldn't happen in normal flow, but handle gracefully
-            response_text = "I didn't catch that. Could you repeat?"
+            logger.warning(
+                f"[SESSION MANAGER] Empty speech result for call {call_sid}"
+            )
+            response_text = "I didn't catch that. Could you please repeat what you'd like?"
             gather_url = f"{base_url}/webhooks/voice/gather?CallSid={call_sid}" if base_url else f"/webhooks/voice/gather?CallSid={call_sid}"
             return self.tts_service.generate_twiml_with_gather(
                 response_text, gather_url
@@ -110,9 +113,47 @@ class CallSessionManager:
             session.state, speech_result
         )
 
+        # Validate agent response has required fields
+        if not agent_response or not isinstance(agent_response, dict):
+            logger.error(
+                f"[SESSION MANAGER] Invalid agent response (not a dict): {agent_response}"
+            )
+            response_text = "I'm having trouble processing that. Could you please say that again?"
+            gather_url = f"{base_url}/webhooks/voice/gather?CallSid={call_sid}" if base_url else f"/webhooks/voice/gather?CallSid={call_sid}"
+            return self.tts_service.generate_twiml_with_gather(
+                response_text, gather_url
+            )
+
         response_text = agent_response.get("response", "")
         intent = agent_response.get("intent", "")
         action = agent_response.get("action", {})
+        has_error = agent_response.get("error", False)
+
+        # Treat as error if response text is missing or empty
+        if not response_text or not response_text.strip():
+            logger.warning(
+                "[SESSION MANAGER] Agent returned empty response text, treating as error"
+            )
+            has_error = True
+            response_text = "I'm sorry, I didn't understand that. Could you please repeat?"
+
+        # Skip action processing if there was an error (agent didn't understand)
+        if has_error:
+            logger.warning(
+                "[SESSION MANAGER] Skipping action processing due to agent error/fallback response"
+            )
+            # Keep current stage and just return the clarification response
+            gather_url = f"{base_url}/webhooks/voice/gather?CallSid={call_sid}" if base_url else f"/webhooks/voice/gather?CallSid={call_sid}"
+            return self.tts_service.generate_twiml_with_gather(
+                response_text, gather_url
+            )
+
+        # Validate action structure
+        if not isinstance(action, dict) or "type" not in action:
+            logger.warning(
+                f"[SESSION MANAGER] Invalid action structure: {action}, setting to none"
+            )
+            action = {"type": "none"}
 
         # Validate action type is allowed in current stage
         action_type = action.get("type", "none")

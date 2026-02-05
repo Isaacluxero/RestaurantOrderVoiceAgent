@@ -40,6 +40,13 @@ class StageTransitionHandler:
 
         Modifies state.stage and agent_response in place.
         """
+        # Skip stage transitions if there was an error (agent didn't understand)
+        if agent_response.get("error", False):
+            logger.warning(
+                "[STAGE TRANSITION] Skipping stage transition due to agent error/fallback response"
+            )
+            return
+
         old_stage = state.stage
 
         # Check for revision indicators

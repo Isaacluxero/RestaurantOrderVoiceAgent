@@ -113,17 +113,23 @@ class AgentService:
             logger.info(f"[AGENT LLM OUTPUT] Parsed JSON: {json.dumps(llm_response, indent=2)}")
             logger.info("=" * 80)
         except json.JSONDecodeError as e:
-            # Fallback if JSON parsing fails
+            logger.error(f"[AGENT] JSON decode error: {e}")
+            logger.error(f"[AGENT] Content that failed to parse: {content if 'content' in locals() else 'N/A'}")
+            # Return error response with error flag to prevent stage transitions
             return {
-                "response": "I'm sorry, I didn't understand that. Could you repeat?",
+                "response": "I'm sorry, I didn't quite catch that. Could you please repeat what you'd like?",
                 "intent": "asking_question",
                 "action": {"type": "none"},
+                "error": True,  # Flag to prevent stage transitions
             }
         except Exception as e:
+            logger.error(f"[AGENT] Error processing user input: {e}", exc_info=True)
+            # Return generic error response with error flag
             return {
-                "response": "I'm having trouble processing that. Could you try again?",
+                "response": "I'm having trouble processing that. Could you please say that again?",
                 "intent": "asking_question",
                 "action": {"type": "none"},
+                "error": True,  # Flag to prevent stage transitions
             }
 
         user_input_lower = user_input.lower().strip()
